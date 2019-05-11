@@ -11,7 +11,7 @@ library("KFAS")
 library("dlm")
 library("xts")
 ## gasoline - dlm ####
-diesel <- read.zoo("/Users/kj/state_space_models/diesel.csv", header = TRUE)
+diesel <- read.zoo("state_space_models/diesel.csv", header = TRUE)
 dim(diesel)
 miss_obs <- 1
 set_count <- 0
@@ -302,56 +302,62 @@ sapply(1:42, function(x) Box.test(res5, lag = x, type = "Ljung-Box")$p.value)
 shapiro.test(res5)
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 6. Local Linear Trend + Bayesian Variance Estimation
+## 6. Multivariate SSM
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 
 
 
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
+## 7. Bayesian Variance Estimation - Conjugate Prio
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 
-## bayesian online filtering ####
+
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
+## 8. Bayesian Variance Estimation - Sequential MCMC
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 ## prior
 ## likelihood
 ## posterior
 ## new prior
 
 online_mean <- function(theta = 2, sig = 2, n = 100, m_0 = 2, C_0 = 10){
-# theta <- 2
-# sig <- 2
-# n <- 100
-y <- theta + rnorm(n = n, mean = 0, sd = sig)
-sig_sq <- sig^2
-
-# m_0 <- 100
-# C_0 <- 100
-
-filter_y <- vector(length = n, mode = "numeric")
-filter_ci <- vector(length = n, mode = "numeric")
-for (i in 1:n){
-
-if (i == 1) {
-  m_prio <- m_0
-  C_prio <- C_0
-} else{
-  m_prio <- m_post
-  C_prio <- C_post
-}
-y_n <- y[i]
-m_post <- m_prio+(C_prio)/(C_prio+sig_sq)*(y_n-m_prio)
-C_post <- (sig_sq*C_prio)/(sig_sq+C_prio)
-filter_y[i] <- m_post
-filter_ci[i] <- C_post
-}
-plot.ts(y, type = "b", col = "blue")
-lines(filter_y, type = "o", col = "red")
-lines(filter_y+1.96*filter_ci, type = "l", col = "red")
-lines(filter_y-1.96*filter_ci, type = "l", col = "red")
+  # theta <- 2
+  # sig <- 2
+  # n <- 100
+  y <- theta + rnorm(n = n, mean = 0, sd = sig)
+  sig_sq <- sig^2
+  
+  # m_0 <- 100
+  # C_0 <- 100
+  
+  filter_y <- vector(length = n, mode = "numeric")
+  filter_ci <- vector(length = n, mode = "numeric")
+  for (i in 1:n){
+    
+    if (i == 1) {
+      m_prio <- m_0
+      C_prio <- C_0
+    } else{
+      m_prio <- m_post
+      C_prio <- C_post
+    }
+    y_n <- y[i]
+    m_post <- m_prio+(C_prio)/(C_prio+sig_sq)*(y_n-m_prio)
+    C_post <- (sig_sq*C_prio)/(sig_sq+C_prio)
+    filter_y[i] <- m_post
+    filter_ci[i] <- C_post
+  }
+  plot.ts(y, type = "b", col = "blue")
+  lines(filter_y, type = "o", col = "red")
+  lines(filter_y+1.96*filter_ci, type = "l", col = "red")
+  lines(filter_y-1.96*filter_ci, type = "l", col = "red")
 }
 
 online_mean(theta = 10, sig = 2, n = 100, m_0 = -20, C_0 = 2000)
 
 online_mean_var <- function(theta = 2, sig = 4, n = 100,
                             m_0 = 2, n_0 = 10, a_0 = 2, b_0 = 2){
-
+  
   y <- theta + rnorm(n = n, mean = 0, sd = sig)
   sig_sq <- sig^2
   
@@ -388,600 +394,10 @@ online_mean_var <- function(theta = 2, sig = 4, n = 100,
 
 
 xx <- online_mean_var(theta = 2, sig = 5, n = 1000,
-                m_0 = 2, n_0 = 10, a_0 = 100, b_0 = 1)
+                      m_0 = 2, n_0 = 10, a_0 = 100, b_0 = 1)
 plot.ts(xx$phi, type = "o", col = "red")
 plot.ts(xx$theta, col = "red")
 lines(cumsum(xx$y)/seq(1,1000), col = "blue")
 #plot.ts(xx$y, type = "b", col = "blue")
 plot.ts(xx$y, type = "b", col = "blue")
 
-
-## MARSS - Fishery and Environement ######
-
-mod.list <- list(B=matrix(1), U=matrix(0), Q=matrix("q"),
-  Z=matrix(1), A=matrix(0), R=matrix("r"),
-  x0=matrix("mu"), tinitx=0)
-
-# simulate
-q <- 0.1; r <- 0.1; n <- 100
-y <- cumsum(rnorm(n,0,sqrt(q)))+rnorm(n,0,sqrt(r))
-
-# fit
-fit <- MARSS(y, model=mod.list)
-
-mod.list$Q <- matrix(0.1)
-fit <- MARSS(y,model=mod.list)
-
-dat <- as.vector(Nile)
-
-tibble(Year = 1871:1970, Flow = dat) %>% 
-ggplot(aes(x=Year, y = Flow))+
-  geom_line()+
-  geom_smooth()
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 1. Local Level 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = B*x_t + u_t + w_t ; w_t ~ N(0,Q)
-## x_t = Z*x_t-1 + a + v_t ;v_t ~ N(0,R)
-##
-## y_t = x_t + w_t ; w_t ~ N(0,q)  
-## x_t = x_t-1 + v_t ;  v_t ~ N(0,0)
-## x_0 = mu
-## B=1; U=0; Q=0; Z=1; A=0, R="r"; x0=mu; 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-mod.nile.0 <- list( 
-  B=matrix(1), U=matrix(0), Q=matrix(0),
-  Z=matrix(1), A=matrix(0), R=matrix("r"),
-  x0=matrix("mu"), tinitx=0 )
-fit.0 <- MARSS(dat, model=mod.nile.0)
-
-c(coef(fit.0, type="vector"), LL=fit.0$logLik, AICc=fit.0$AICc)
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 2. Local Linear Trend 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = B*x_t + a + v_t ; v_t ~ N(0,R)
-## x_t = Z*x_t-1 + u_t + w_t ;w_t ~ N(0,Q)
-##
-## y_t = x_t + w_t ; w_t ~ N(0,r)  
-## x_t = x_t-1 + u + v_t ;  v_t ~ N(0,0)
-## x_0 = mu
-## B=1; U=u; Q=0; Z=1; A=0, R="r"; x0=mu; 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-mod.nile.1 <- list( 
-  B=matrix(1), U=matrix("u"), Q=matrix(0),
-  Z=matrix(1), A=matrix(0), R=matrix("r"),
-  x0=matrix("mu"), tinitx=0 )
-
-fit.1 <- MARSS(dat, model=mod.nile.1)
-
-c(coef(fit.1, type="vector"), LL=fit.1$logLik, AICc=fit.1$AICc)
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 3. Stochastic Level 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = B*x_t + a + v_t ; v_t ~ N(0,R)
-## x_t = Z*x_t-1 + u_t + w_t ;w_t ~ N(0,Q)
-## 
-## y_t = x_t + w_t ; w_t ~ N(0,r)
-## x_t = x_t-1 + v_t ;  v_t ~ N(0,q)
-## x_0 = mu
-## B=1; U=0; Q=q; Z=1; A=0, R="r"; x0=mu;
-###-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-mod.nile.2 = list(
-  B=matrix(1), U=matrix(0), Q=matrix("q"),
-  Z=matrix(1), A=matrix(0), R=matrix("r"),
-  x0=matrix("mu"), tinitx=0 )
-
-fit.2 <- MARSS(dat, model=mod.nile.2)
-
-c(coef(fit.2, type="vector"), LL=fit.2$logLik, AICc=fit.2$AICc)
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 4. Stochastic Level with Drift 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = B*x_t + a + v_t ; v_t ~ N(0,R)
-## x_t = Z*x_t-1 + u_t + w_t ;w_t ~ N(0,Q)
-##
-## y_t = x_t + w_t ; w_t ~ N(0,r)  
-## x_t = x_t-1 + u + v_t ;  v_t ~ N(0,q)
-## x_0 = mu
-## B=1; U=u; Q=q; Z=1; A=0, R=r; x0=mu; 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-mod.nile.3 = list(
-  B=matrix(1), U=matrix("u"), Q=matrix("q"),
-  Z=matrix(1), A=matrix(0), R=matrix("r"),
-  x0=matrix("mu"), tinitx=0 )
-
-fit.3 <- MARSS(dat, model=mod.nile.3)
-
-c(coef(fit.3, type="vector"), LL=fit.3$logLik, AICc=fit.3$AICc)
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 4. Stochastic Level with Drift in JAGS
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = B*x_t + a + v_t ; v_t ~ N(0,R)
-## x_t = Z*x_t-1 + u_t + w_t ;w_t ~ N(0,Q)
-##
-## y_t = x_t + w_t ; w_t ~ N(0,r)  
-## x_t = x_t-1 + u + v_t ;  v_t ~ N(0,q)
-## x_0 = mu
-## B=1; U=u; Q=q; Z=1; A=0, R=r; x0=mu; 
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-library(R2jags)
-library(rjags)
-library(coda)
-
-y <- as.vector(Nile)
-
-model.loc <- "ss_model.txt"
-jagsscript <- cat(
-model {  
-# priors on parameters
-mu ~ dnorm(Y1, 1/(Y1*100)); # normal mean = 0, sd = 1/sqrt(0.01)
-tau.q ~ dgamma(0.001,0.001); # This is inverse gamma
-sd.q <- 1/sqrt(tau.q); # sd is treated as derived parameter
-tau.r ~ dgamma(0.001,0.001); # This is inverse gamma
-sd.r <- 1/sqrt(tau.r); # sd is treated as derived parameter
-u ~ dnorm(0, 0.01);
-                  
-# Because init X is specified at t=0
-X0 <- mu
-X[1] ~ dnorm(X0+u,tau.q);
-Y[1] ~ dnorm(X[1], tau.r);
-                  
-for(i in 2:TT) {
-predX[i] <- X[i-1]+u; 
-X[i] ~ dnorm(predX[i],tau.q); # Process variation
-Y[i] ~ dnorm(X[i], tau.r); # Observation variation
-}
-}                  
-,file=model.loc)
-
-jags.data <- list("Y"=y, "TT"=length(y), Y1=y[1])
-jags.params <- c("sd.q", "sd.r", "X", "mu", "u")
-
-mod_ss <- jags(jags.data, parameters.to.save=jags.params, 
-               model.file=model.loc, n.chains = 3, 
-               n.burnin=5000, n.thin=1, n.iter=10000, DIC=TRUE)
-mod_ss
-summary(mod_ss)
-
-attach.jags(mod_ss)
-par(mfrow=c(2,2))
-hist(mu)
-abline(v=coef(kem.3)$x0, col="red")
-hist(u)
-abline(v=coef(kem.3)$U, col="red")
-hist(log(sd.q^2))
-abline(v=log(coef(kem.3)$Q), col="red")
-hist(log(sd.r^2))
-abline(v=log(coef(kem.3)$R), col="red")
-
-plotModelOutput <- function(jagsmodel, Y) {
-  attach.jags(jagsmodel)
-  x <- seq(1,length(Y))
-  XPred <- cbind(apply(X,2,quantile,0.025), apply(X,2,mean), apply(X,2,quantile,0.975))
-  ylims <- c(min(c(Y,XPred), na.rm=TRUE), max(c(Y,XPred), na.rm=TRUE))
-  plot(Y, col="white",ylim=ylims, xlab="",ylab="State predictions")
-  polygon(c(x,rev(x)), c(XPred[,1], rev(XPred[,3])), col="grey70",border=NA)
-  lines(XPred[,2])
-  points(Y)
-}
-plotModelOutput(mod_ss, y)
-
-lines(kem.3$states[1,], col="red")
-lines(1.96*kem.3$states.se[1,]+kem.3$states[1,], col="red", lty=2)
-lines(-1.96*kem.3$states.se[1,]+kem.3$states[1,], col="red", lty=2)
-title("State estimate and data from\nJAGS (black) versus MARSS (red)")
-
-
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## Residual Diagnostics
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## residuals from measurement - v_t - model residuals
-## residuals from state- w_t - state residuals
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-## Local Level
-par(mfrow=c(2,1))
-resids <- residuals(fit.0)
-plot(resids$model.residuals[1,], 
-     ylab="model residual", xlab="", main="Local Level")
-abline(h=0)
-plot(resids$state.residuals[1,], 
-     ylab="state residual", xlab="", main="Local Lecel")
-abline(h=0)
-
-## Local Level w Drift
-par(mfrow=c(2,1))
-resids <- residuals(fit.1)
-plot(resids$model.residuals[1,], 
-     ylab="model residual", xlab="", main="Local Level w Drift")
-abline(h=0)
-plot(resids$state.residuals[1,], 
-     ylab="state residual", xlab="", main="Local Level w Drift")
-abline(h=0)
-
-## Stochastic Level 
-par(mfrow=c(2,1))
-resids <- residuals(fit.2)
-plot(resids$model.residuals[1,], 
-     ylab="model residual", xlab="", main="Stochastic Level")
-abline(h=0)
-plot(resids$state.residuals[1,], 
-     ylab="state residual", xlab="", main="Stochastic Level")
-abline(h=0)
-
-## Stochastic Level w Drift
-par(mfrow=c(2,1))
-resids <- residuals(fit.3)
-plot(resids$model.residuals[1,], 
-     ylab="model residual", xlab="", main="Stochastic Level w Drift")
-abline(h=0)
-plot(resids$state.residuals[1,], 
-     ylab="state residual", xlab="", main="Stochastic Level w Drift")
-abline(h=0)
-
-par(mfrow=c(2,2))
-resids <- residuals(fit.0)
-acf(resids$model.residuals[1,], main="flat level v(t)")
-resids <- residuals(fit.1)
-acf(resids$model.residuals[1,], main="linear trend v(t)")
-resids <- residuals(fit.2)
-acf(resids$model.residuals[1,], main="stoc level v(t)")
-acf(resids$state.residuals[1,], main="stoc level w(t)", na.action=na.pass)
-
-## dlm - Intro State Space Time Series ####
-library(dlm)
-data.1            <- log(read.table("/Users/kj/Desktop/SSTS/UKdriversKSI.txt",skip=1))
-colnames(data.1)  <- "logKSI"
-data.1            <- ts(data.1, start = c(1969), frequency = 12)
-data.2            <- log(read.table("/Users/kj/Desktop/SSTS/NorwayFinland.txt",skip=1))
-data.2            <- data.2[,2,drop=F]
-colnames(data.2)  <- "logNorFatalities"
-data.2            <- ts(data.2 , start = c(1970,1))
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 1. Deterministic Level
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-(fit <- lm(data.1[,1]~1 ))
-res <- residuals(fit)
-(coefs <- round(as.numeric(coef(fit)),8))
-(error.var<- round(summary(fit)$sigma^2,8))
-
-par(mfrow=c(1,1))
-plot.ts(c(data.1),  col = "darkgrey", xlab="",ylab = "log KSI",pch=3,cex=0.5,
-          cex.lab=0.8,cex.axis=0.7,xlim=c(0,200))
-abline(h=coefs[1] , col = "blue", lwd  = 2, lty=2)
-legend("topright",leg = c("log UK drivers KSI",
-                            "  deterministic level"),cex = 0.6,
-         lty = c(1, 2),col = c("darkgrey","blue"),
-         pch=c(3,NA), bty = "y", horiz = T)
-
-par(mfrow=c(1,1))
-plot(ts(residuals(fit)),ylab="",xlab="",xlim = c(0,200), col = "darkgrey",lty=2)
-abline(h=0)
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 2. Stochastic Level
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = F_t*theta_t + v_t ; v_t ~ N(0,V_t)
-## theta_t = G_t*theta_t-1 + w_t ; w_t ~ N(0,W_t)
-## thata_0 ~ N(m_0,C_0)
-##
-## y_t = theta_t + v_t ; v_t ~ N(0,V)  
-## theta_t = theta_t-1 + w_t ;  w_t ~ N(0,W)
-## x_0 = mu
-## 
-## FF = 1; V = ; GG = 1; W; m0=0; C0=100; 
-## Time Varying Models
-## JFF, JV, JGG, JW, X
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-fn  <- function(params){
-  dlmModPoly(order = 1, dV = exp(params[1]) , dW = exp(params[2]))
-}
-
-y                <- c(data.1)
-fit              <- dlmMLE(y, rep(0,2), fn)
-mod              <- fn(fit$par)
-(obs.error.var   <- V(mod))
-(state.error.var <- W(mod))
-(mu.1            <- dropFirst(dlmFilter(y,mod)$m)[1])
-res              <- residuals(dlmFilter(y,mod),sd=F)
-filtered         <- dlmFilter(y,mod)
-smoothed         <- dlmSmooth(filtered)
-mu               <- dropFirst(smoothed$s)
-mu.1             <- mu[1]
-
-
-par(mfrow=c(1,1))
-plot.ts(y,  col = "darkgrey", xlab="",ylab = "log KSI",pch=3,cex=0.5,
-          cex.lab=0.8,cex.axis=0.7,xlim=c(0,200))
-lines(mu , col = "blue", lwd  = 2, lty=2)
-legend("topright",leg = c("log UK drivers KSI","  stochastic level"),
-         cex = 0.6,lty = c(1, 2), col = c("darkgrey","blue"),
-         pch=c(3,NA), bty = "y", horiz = T)
-
-
-par(mfrow=c(1,1))
-plot.ts(res,ylab="",xlab="", col = "darkgrey", main = "",cex.main = 0.8)
-abline(h=0)
-
-shapiro.test(res)
-Box.test(res, lag = 15, type = "Ljung")
-sapply(1:20,function(l){round(Box.test(res, lag=l, type = "Ljung-Box")$p.value,4)})
-
-
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 3. Stochastic Level and Stochastic Slope
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = F_t*theta_t + v_t ; v_t ~ N(0,V_t)
-## theta_t = G_t*theta_t-1 + w_t ; w_t ~ N(0,W_t)
-## thata_0 ~ N(m_0,C_0)
-##
-## y_t = theta_t + v_t ; v_t ~ N(0,V)  
-## theta_t = theta_t-1 + w_t ;  w_t ~ N(0,W)
-## x_0 = mu
-## 
-## FF = 1; V = ; GG = 1; W; m0=0; C0=100; 
-## Time Varying Models
-## JFF, JV, JGG, JW, X
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-level0 <- y[1]
-slope0 <- mean(diff(y))
-fn <- function(params){
-  dlmModPoly(dV = exp(params[1]), dW = exp(params[2:3]),
-             m0 = c(level0, slope0),C0 = 2*diag(2))
-}
-fit                <- dlmMLE(y, rep(0,3), fn)
-mod                <- fn(fit$par)
-(obs.error.var     <- V(mod))
-(state.error.var.1 <- W(mod)[1,1])
-(state.error.var.2 <- W(mod)[2,2])
-filtered           <- dlmFilter(y, mod)
-smoothed           <- dlmSmooth(filtered)
-sm                 <- dropFirst(smoothed$s)
-mu.1               <- sm[1,1]
-nu.1               <- sm[1,2]
-mu                 <- c(sm[,1])
-nu                 <- c(sm[,2])
-res                <- c(residuals(filtered, sd = F))
-
-par(mfrow=c(1,1))
-temp <- window(cbind(data.1,mu),start = 1969, end = 1984)
-plot(temp , plot.type="single" , col =c("darkgrey","blue"),lty=c(1,2), xlab="",ylab = "log KSI")
-legend("topright",leg = c("log UK drivers KSI","  stochastic level and Slope"),
-         cex = 0.7, lty = c(1, 2),col = c("darkgrey","blue"),
-         pch=c(3,NA),bty = "y", horiz = T)
-
-par(mfrow=c(1,1))
-plot(ts(nu*10^4,start =1969,end=1984,frequency =12),xlab="",
-col = "darkgrey",lty=2,ylab=expression(10^(-4)))
-
-par(mfrow=c(1,1))
-plot(ts(res,c(1969),frequency=12),ylab="",xlab="", col = "darkgrey",
-       lty=2, main = 'Irregular component', cex.main = 0.7) > abline(h=0)
-
-shapiro.test(res)
-Box.test(res, lag = 15, type = "Ljung")
-sapply(1:15,function(l){round(Box.test(res, lag=l, type = "Ljung-Box")$p.value,4)})
-
-
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 3. Stochastic Level, Stochastic Slope and Regression Coefficient
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-
-intervention        <- rep(1,dim(data.1)[1])
-intervention[1:169] <- 0
-intervention        <- ts(intervention, start = c(1969),frequency=12)
-prices <- read.table("/Users/kj/Desktop/SSTS/logUKpetrolprice.txt",skip=1)
-prices <- ts(prices, start = c(1969),frequency=12)
-
-fn <- function(params){
-  mod <- dlmModPoly(order = 1, dV =exp(params[1]), dW = exp(params[2])) +
-    dlmModSeas(frequency = 12, dV =exp(params[1]) , dW= rep(0,11))
-  return(mod)
-}
-fit      <- dlmMLE(data.1, rep(0,2),fn)
-mod      <- fn(fit$par)
-filtered <- dlmFilter(data.1,mod)
-smoothed <- dlmSmooth(filtered)
-cov      <- dlmSvd2var(smoothed$U.S, smoothed$D.S)
-lev.var  <- sapply(cov, function(x){x[1,1]})
-mu       <- ((smoothed$s)[,1])[-1]
-nu       <- ((smoothed$s)[,2])[-1]
-
-res    <- residuals(smoothed,sd=F)
-lev.ts <- ts(lev.var[-1],start = 1969, frequency  =12)
-wid    <- qnorm(0.05, lower = FALSE) *sqrt(lev.ts)
-temp   <- cbind(mu, mu + wid %o% c(-1, 1))
-temp   <- ts(temp,start = 1969,frequency =12)
-
-par(mfrow=c(1,1))
-plot(lev.ts,xlab="",ylab = "level estimation variance")
-
-par(mfrow=c(1,1))
-plot(temp, plot.type = "s", type = "l",lty = c(1, 5, 5),
-       ylab = "Level", xlab = "", ylim = range(data.1),col=c("blue","red","red"),lwd=2)
-lines(data.1, type = "o", col = "darkgrey")
-legend("topright",
-         leg = c("log UK drivers KSI","  stochastic level +/- 1.64SE"),
-         cex = 0.7, lty = c(1, 5),col = c("darkgrey","red"),
-         bty = "y", horiz = F)
-
-nu.var    <- sapply(cov, function(x){x[2,2]})
-nu.var.ts <- ts(nu.var[-1], start = c(1969,1), frequency = 12)
-wid       <- qnorm(0.05, lower = F) * sqrt(nu.var.ts)
-temp      <- cbind(nu, nu + wid %o% c(-1,1))
-temp      <- ts(temp,start = 1969,frequency =12)
-par(mfrow=c(1,1))
-plot(temp, plot.type = "s", type = "l",lty = c(1, 5, 5),
-       ylab = "Level", xlab = "",col=c("blue","red","red"),lwd=1)
-legend("topright",
-         leg =   "deterministic level +/- 1.64SE",
-         cex = 0.7, lty = c(5),col = c("red"),
-         bty = "y", horiz = F)
-
-
-## bsts ####
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## y_t = mu_t + gamma_t + beta'_t* x_t + e_t
-## mu_t = mu_t-1 + delta_t-1 + u_t
-## delta_t = delta_t-1 + v_t
-## gamma_t = -gamma_t-1 -...- gamma_t-S+1 + w_t
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-(model_components <- list())
-summary(model_components <- AddStudentLocalLinearTrend(model_components, y = y))
-summary(model_components <- AddSeasonal(model_components, y = y, nseasons = 12))
-
-fit <- bsts(y, model_components, niter = 2000)
-summary(fit)
-burnin <- 500 # Throw away first 500 
-tibble(
-  date = as.Date(time(data.1)),
-  trend = colMeans(fit$state.contributions[-(1:burnin),"trend",]),
-  seasonality = colMeans(fit$state.contributions[-(1:burnin),"seasonal.12.1",])) %>%
-  gather("component", "value", trend, seasonality) %>%
-  ggplot(aes(x = date, y = value)) + 
-  geom_line() + theme_bw() + 
-  theme(legend.title = element_blank()) + ylab("") + xlab("") +
-  facet_grid(component ~ ., scales="free") + guides(colour=FALSE) +
-  theme(axis.text.x=element_text(angle = -90, hjust = 0))
-
-pred <- predict(fit, horizon = 100, burn = burnin, quantiles = c(.05, .95))
-plot(pred)
-  
-
-residuals(fit)
-errors <- bsts.prediction.errors(fit, burn = 1000, )
-PlotDynamicDistribution(errors)
-
-
-
-
-
-
-## dlm - Vignette ####
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 2. Stochastic Level
-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-dlm(FF = 1, V = NA, GG = 1, W = NA, m0 = 0, C0 = 100)
-dlmModPoly(order = 1, dV = NA , dW = exp(params[2]))
-
-dlmMLE
-
-## MLE Example 1
-buildFun <- function(x) {
-  dlmModPoly(order = 1, dV = exp(x[1]), dW = exp(x[2]))
-    }
-fit <- dlmMLE(Nile, parm = c(0,0), build = buildFun)
-fit$conv
-dlmNile <-  buildFun(fit$par)
-V(dlmNile)
-W(dlmNile)
-
-## MLE Example 2
-buildFun <- function(x) {
-m <- dlmModPoly(1, dV = exp(x[1]))
-m$JW <- matrix(1)
-m$X <- matrix(exp(x[2]), nc = 1, nr = length(Nile))
-j <- which(time(Nile) == 1899)
-m$X[j,1] <- m$X[j,1] * (1 + exp(x[3]))
-return(m)
-}
-
-
-fit <- dlmMLE(Nile, parm = c(0,0,0), build = buildFun) 
-fit$conv
-dlmNileJump <-  buildFun(fit$par)
-V(dlmNileJump)
-dlmNileJump$X[c(1,which(time(Nile) == 1899)),1]
-plot(Nile)
-
-nileJumpFilt <- dlmFilter(Nile, dlmNileJump)
-plot(Nile, type = 'o', col = "seagreen")
-lines(dropFirst(nileJumpFilt$m),
-      type = 'o', pch = 20, col = "brown")
-
-attach(nileJumpFilt)
-v <- unlist(dlmSvd2var(U.C, D.C))
-pl <- dropFirst(m) + qnorm(0.05, sd = sqrt(v[-1]))
-pu <- dropFirst(m) + qnorm(0.95, sd = sqrt(v[-1]))
-detach()
-lines(pl, lty = 2, col = "brown")
-lines(pu, lty = 2, col = "brown")
-
-nileJumpSmooth <- dlmSmooth(nileJumpFilt)
-plot(Nile, type = 'o', col = "seagreen")
-attach(nileJumpSmooth)
-lines(dropFirst(s), type = 'o', pch = 20, col = "brown") > v <- unlist(dlmSvd2var(U.S, D.S))
-pl <- dropFirst(s) + qnorm(0.05, sd = sqrt(v[-1]))
-pu <- dropFirst(s) + qnorm(0.95, sd = sqrt(v[-1]))
-detach()
-lines(pl, lty = 2, col = "brown")
-lines(pu, lty = 2, col = "brown")
-
-
-## MLE Example 3
-y = log(UKgas)
-par(mfrow=c(1,1))
-plot(log(UKgas))
-
-## Free-form seasonal factor DLM
-##-#-#-#-#-#-#-#-#
-## y_t = F*theta_t+v_t
-## theta_t = G*theta_t-1+w_t
-## theta_t = [mu_t, beta_t, alpha_1, alpha_2, alpha_3, alpha_4]'
-## F = [1 0 1 0 0 ]
-## G =  [ 1  1  0  0  0 
-##        0  1  0  0  0
-##        0  0 -1 -1 -1 
-##        0  0  1  0  0
-##        0  0  0  1  0 ]
-##-#-#-#-#-#-#-#-#
-dlm3 = dlmModPoly(order = 2) + dlmModSeas(4)
-
-buildFun = function(x) {
-  diag(W(dlm3))[2:3] = exp(x[1:2])
-  V(dlm3) = exp(x[3])
-  return(dlm3)
-}
-
-fit3 = dlmMLE(y, parm = c(0.1,0.1,0.1), build = buildFun)
-dlm3 = buildFun(fit3$par)
-ySmooth = dlmSmooth(y, mod = dlm3)
-x = cbind(y, dropFirst(ySmooth$s[, c(1, 3)]))
-colnames(x) = c("Gas", "Trend", "Seasonal")
-par(mfrow=c(1,1))
-plot(x, type = "o", main = "UK Gas Consumption")
-
-# Fourier form representation of seasonality
-dlm4 = dlmModPoly() + dlmModTrig(4)
-
-buildFun = function(x) {
-  diag(W(dlm4))[2:3] = exp(x[1:2])
-  V(dlm4) = exp(x[3])
-  return(dlm4)
-}
-
-fit4 = dlmMLE(y,parm=c(0.1,0.1,0.1),build=buildFun)
-
-dlm4 = buildFun(fit4$par)
-
-ySmooth = dlmSmooth(y, mod = dlm4)
-
-x = cbind(y, dropFirst(ySmooth$s[, c(1, 3)]))
-
-colnames(x) = c("Gas", "Trend", "Seasonal")
-
-pdf(file="UKgas-harmonic.pdf",width=8,height=6)
-par(mfrow=c(1,1))
-plot(x, type = "o", main = "UK Gas Consumption")
