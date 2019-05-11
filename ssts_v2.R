@@ -11,7 +11,7 @@ library("KFAS")
 library("dlm")
 library("xts")
 ## gasoline - dlm ####
-diesel <- read.zoo("/Users/kj/Documents/02_Studium/04_Data_Masterthesis/avg_v6/xts_all_15_diesel.csv", header = TRUE)
+diesel <- read.zoo("/Users/kj/state_space_models/diesel.csv", header = TRUE)
 dim(diesel)
 miss_obs <- 1
 set_count <- 0
@@ -268,7 +268,7 @@ shapiro.test(res42)
 
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 5 Local Linear Trend + Trigonometric 
+## 5. Local Linear Trend + Trigonometric 
 ## W - 8x8
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 dlm5 <- dlmModPoly(order = 1) + dlmModTrig(s = 7, q = 3)
@@ -300,6 +300,10 @@ abline(a = 0, b = 0, col = "red")
 checkresiduals(res5)
 sapply(1:42, function(x) Box.test(res5, lag = x, type = "Ljung-Box")$p.value)
 shapiro.test(res5)
+
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
+## 6. Local Linear Trend + Bayesian Variance Estimation
+##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 
 
 
