@@ -1,44 +1,60 @@
 #####
 library("tidyverse")
+#library("tidybayes")
 library("lubridate")
+library("anytime")
 library("tsibble")
 library("ggplot2")
 library("stats")
-library("MARSS")
+#library("MARSS")
 library("forecast")
-library("datasets")
-library("KFAS")
+#library("datasets")
+#library("KFAS")
 library("dlm")
 library("xts")
 ## gasoline - dlm ####
-diesel <- read.zoo("state_space_models/diesel.csv", header = TRUE)
+diesel <- read.zoo("~/state_space_models/diesel.csv", header = TRUE)
 dim(diesel)
 miss_obs <- 1
 set_count <- 0
-while (miss_obs==1){
-  ts <- as.xts(diesel[,sample(c(1:588),1)])
+while (miss_obs == 1){
+  ts <- as.xts(diesel[,sample(c(1:588),10)])
   set_count <- set_count + 1
 if(sum(is.na(ts)) == 0){
   miss_obs <- 0
 }  
-if (set_count>=100){break}
+if (set_count >= 1000){
+  print(set_count)
+  break
+  }
 }
 
-tbl_diesel <- tibble(PRICE = as.vector(coredata(ts)), INDEX = as.POSIXct(.index(ts), origin = "1970-01-01"))
-tbl_diesel
+#days <- ymd(zoo::index(ts))
+tbl_diesel <-
+  as_tibble(coredata(ts)) %>%
+  bind_cols(DATE = ymd(zoo::index(ts))) %>%
+  select(DATE, everything()) %>%
+  rename_if(is.numeric, funs(str_c("STATION_", 1:10)))
 
-tbl_diesel %>% mutate(DATE = lubridate::date(INDEX)) %>%
-  select(DATE = DATE, PRICE = PRICE) -> tbl_diesel
-as_tsibble(tbl_diesel, index = DATE) -> tsb_d
-# tsb_d %>% select(DATE, PRICE) -> tsb_d 
-tsb_d %>% mutate(YEAR = year(DATE), MONTH = month(DATE, label = T),
-                 WDAY = wday(DATE, label = T)) -> tsb_d
+tsb_d <- as_tsibble(tbl_diesel, index = DATE)
 
-price <- tsb_d %>% pull(PRICE) *0.1
+tsb_d <-
+  tsb_d %>% gather(-DATE, key = "STATION", value = "PRICE", factor_key = T) %>% 
+mutate(YEAR = year(DATE), MONTH = month(DATE, label = T),
+                 WDAY = wday(DATE, label = T)) %>%
+    separate(STATION, c("DROP", "STATION")) %>%
+    select(-DROP) %>% mutate_at(vars("STATION"), as.factor)
+  
+tsb_d %>% 
+  ggplot(aes(x = DATE, y = PRICE, col = STATION))+
+           geom_line()+
+  facet_wrap(~YEAR, scales = "free_x")
 
-mod_ex25 <- dlmModPoly(order = 1, dV = 0.25, dW = 25, m0 = 17, C0=1)
-y <- c(13, 16.6, 16.3, 16.1, 17.1, 16.9, 16.8, 17.4, 17.1, 17)
-(dlmFilter(y = y, mod = mod_ex25)$m)
+price <- tbl_diesel %>% transmute(ST1=STATION_1*0.1 , ST2=STATION_2*0.1) %>% as.matrix()
+
+# mod_ex25 <- dlmModPoly(order = 1, dV = 0.25, dW = 25, m0 = 17, C0=1)
+# y <- c(13, 16.6, 16.3, 16.1, 17.1, 16.9, 16.8, 17.4, 17.1, 17)
+# (dlmFilter(y = y, mod = mod_ex25)$m)
 
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
@@ -302,15 +318,120 @@ sapply(1:42, function(x) Box.test(res5, lag = x, type = "Ljung-Box")$p.value)
 shapiro.test(res5)
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
-## 6. Multivariate SSM
+## 6.1 Multivariate SSM
+## Local Linear Trend + Fixed Daily Seasonal 
+## W - 8x8
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
+buildFun61 <- function(x) {
+  dlm61    <- dlmModPoly(order = 2)# + dlmModSeas(frequency = 7)
+  
+  ## MV specification
+  dlm61$GG <- dlm61$GG %x% diag(2)
+  dlm61$m0 <-  rep(0,4)
+  dlm61$C0 <-  diag(4) * 1e7
+  
+  ## V
+  Vsd     <- exp(x[1:2]) # only positive values
+  Vcorr   <- tanh(x[3])  # values between -1 and 1
+  V       <- Vsd %o% Vsd
+  V[1,2]  <- V[2,1] <- V[2,1] * Vcorr
+  dlm61$V <- V 
+  
+  ## W1
+  W1_sd    <- exp(x[4:5])
+  W1_corr  <- tanh(x[6])
+  W1       <- W1_sd %o% W1_sd
+  W1[1,2]  <- W1[2,1] <- W1[1,2] * W1_corr
+  
+  ## W2
+  W2_sd    <- exp(x[7:8])
+  W2_corr  <- tanh(x[9])
+  W2       <- W2_sd %o% W2_sd
+  W2[1,2]  <- W2[2,1] <- W2[1,2] * W2_corr
+  
+  dlm61$W  <- bdiag(W1, W2)
+  
+    return(dlm61)
+}
 
+X <- matrix(NA, 100, 9)
+count <- 1
+while(count <= 100){
+fit61 <- dlmMLE(y = price, parm = rnorm(9, 0, 1),
+                build = buildFun61)
+dlm61     <-   buildFun61(fit61$par)
+V(dlm61)
+W(dlm61)
+X[count,] <- c(diag(V(dlm61)), V(dlm61)[1,2], diag(W(dlm61))[1:2], W(dlm61)[1,2], 
+  W(dlm61)[3:4], W(dlm61)[3,4])
+count <- count +1
+}
+
+#unlist(buildFun61(fit61$par)[c("V", "W")])
+yFilter61 <- dlmFilter(price, mod = dlm61)
+ySmooth61 <- dlmSmooth(price, mod = dlm61)
+sdev      <- residuals(yFilter61)$sd 
+yFilter61$f
+
+
+plot.ts(mu, plot.type = "s", col = c("red", "blue"))
+plot.ts(beta)
+plot.ts(beta[-1,])
+
+## set up MLE 
+f1 <- function(x){
+  z <- x[1]^2*x[2]^2
+  return(z)
+}
+df1 <- function(x){
+  z <- 2*x
+  return(z)
+}
+
+optim(par = rnorm(2), f = f1, method = "BFGS")
+optim(par = rnorm(1), f = f1, gr = df1, method = "CG")
+
+optim_sa(fun = f1, start = rnorm(2), lower = c(-10,-10), upper = c(10, 10))
+
+f <- function(x) sin(x*cos(x))
+optim(2, f)$par
+optim
+
+logLik <- function(parm, ...)
+  mod <- build(parm, ...)
+return(dlmLL(y = y, mod = mod, debug = debug))
+
+out <- optim(parm, logLik, method = method, ...)
+return(out)
 
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 ## 7. Bayesian Variance Estimation - Conjugate Prio
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
+data(NelPlo)
+### multivariate local level -- seemingly unrelated time series
+buildSu <- function(x) {
+  Vsd <- exp(x[1:2])
+  Vcorr <- tanh(x[3])
+  V <- Vsd %o% Vsd
+  V[1,2] <- V[2,1] <- V[1,2] * Vcorr
+  Wsd <- exp(x[4:5])
+  Wcorr <- tanh(x[6])
+  W <- Wsd %o% Wsd
+  W[1,2] <- W[2,1] <- W[1,2] * Wcorr
+  return(list(
+    m0 = rep(0,2),
+    C0 = 1e7 * diag(2),
+    FF = diag(2),
+    GG = diag(2),
+    V = V,
+    W = W))
+}
 
+suMLE <- dlmMLE(NelPlo, rep(0,6), buildSu); suMLE
+buildSu(suMLE$par)[c("V","W")]
+StructTS(NelPlo[,1], type="level") ## compare with W[1,1] and V[1,1]
+StructTS(NelPlo[,2], type="level") ## compare with W[2,2] and V[2,2]
 
 ##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 ## 8. Bayesian Variance Estimation - Sequential MCMC
