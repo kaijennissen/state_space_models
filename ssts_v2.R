@@ -14,7 +14,7 @@ library("dlm")
 library("xts")
 
 
-diesel <- read.zoo("/diesel.csv", header = TRUE)
+diesel <- read.zoo("./diesel.csv", header = TRUE)
 dim(diesel)
 miss_obs <- 1
 set_count <- 0
@@ -58,7 +58,8 @@ tsb_d %>%
 price <- tbl_diesel %>%
   transmute(ST1 = STATION_1 * 0.1, ST2 = STATION_2 * 0.1) %>%
   as.matrix()
-
+price1 <- price[, 1]
+price1 <- price[, 2]
 # mod_ex25 <- dlmModPoly(order = 1, dV = 0.25, dW = 25, m0 = 17, C0=1)
 # y <- c(13, 16.6, 16.3, 16.1, 17.1, 16.9, 16.8, 17.4, 17.1, 17)
 # (dlmFilter(y = y, mod = mod_ex25)$m)
@@ -274,12 +275,12 @@ fit42 <- dlmMLE(y = price, parm = rep(0, 3), build = buildFun42)
 fit42$convergence
 unlist(buildFun42(fit42$par)[c("V", "W")])
 dlm42 <- buildFun42(fit42$par)
-yFilter42 <- dlmFilter(price, mod = dlm42)
-ySmooth42 <- dlmSmooth(price, mod = dlm42)
+yFilter42 <- dlmFilter(price1, mod = dlm42)
+ySmooth42 <- dlmSmooth(price1, mod = dlm42)
 
-cbind(price, ySmooth42$s[-1, c(1, 2, 3)]) %>%
+cbind(price1, ySmooth42$s[-1, c(1, 2, 3)]) %>%
   as_tibble() %>%
-  rename(a_price = price, b_level = V2, c_trend = V3, d_seasonal = V4) %>%
+  rename(a_price = price1, b_level = V2, c_trend = V3, d_seasonal = V4) %>%
   mutate(time = c(1:1552)) %>%
   gather("series", "value", -time) %>%
   ggplot(aes(x = time, y = value, col = series)) +
@@ -330,7 +331,7 @@ sapply(1:42, function(x) Box.test(res5, lag = x, type = "Ljung-Box")$p.value)
 shapiro.test(res5)
 
 ## 6.1 Multivariate SSM ========================================================
-## Local Linear Trend + Fixed Daily Seasonal
+## multivariate local level -- seemingly unrelated time series?
 ## W - 8x8
 
 buildFun61 <- function(x) {
@@ -365,22 +366,6 @@ buildFun61 <- function(x) {
   return(dlm61)
 }
 
-X <- matrix(NA, 10, 9)
-count <- 1
-while (count <= 10) {
-  fit61 <- dlmMLE(
-    y = price, parm = rnorm(9, 0, 1),
-    build = buildFun61
-  )
-  dlm61 <- buildFun61(fit61$par)
-  X[count, ] <- c(
-    diag(V(dlm61)), V(dlm61)[1, 2], diag(W(dlm61))[1:2], W(dlm61)[1, 2],
-    diag(W(dlm61))[3:4], W(dlm61)[3, 4]
-  )
-  count <- count + 1
-}
-
-
 fit61 <- dlmMLE(
   y = price, parm = rnorm(9, 0, 1),
   build = buildFun61
@@ -390,41 +375,83 @@ dlm61 <- buildFun61(fit61$par)
 yFilter61 <- dlmFilter(price, mod = dlm61)
 ySmooth61 <- dlmSmooth(price, mod = dlm61)
 sdev <- residuals(yFilter61)$sd
-yFilter61$f
+yFilter61$m
 
-
+mu <- yFilter
 plot.ts(mu, plot.type = "s", col = c("red", "blue"))
 plot.ts(beta)
 plot.ts(beta[-1, ])
 
-## set up MLE
-f1 <- function(x) {
-  z <- x[1]^2 * x[2]^2
-  return(z)
+## 6.2 Multivariate SSM ========================================================
+## Local Linear Trend + Fixed Seasonality
+## W - 8x8
+
+buildFun62 <- function(x) {
+  dlm <- dlmModPoly(order = 2) # + dlmModSeas(frequency = 7)
+  
+  ## MV specification
+  dlm$GG <- dlm$GG %x% diag(2)
+  dlm$m0 <- rep(0, 4)
+  dlm$C0 <- diag(4) * 1e7
+  
+  ## V
+  Vsd <- exp(x[1:2]) # only positive values
+  Vcorr <- tanh(x[3]) # values between -1 and 1
+  V <- Vsd %o% Vsd
+  V[1, 2] <- V[2, 1] <- V[2, 1] * Vcorr
+  dlm62$V <- V
+  
+  ## W1
+  W1_sd <- rep(0, 2) #exp(x[4:5])
+  W1_corr <- 0#tanh(x[6])
+  W1 <- W1_sd %o% W1_sd
+  W1[1, 2] <- W1[2, 1] <- W1[1, 2] * W1_corr
+  
+  ## W2
+  W2_sd <- exp(x[4:5])
+  W2_corr <- tanh(x[6])
+  W2 <- W2_sd %o% W2_sd
+  W2[1, 2] <- W2[2, 1] <- W2[1, 2] * W2_corr
+  
+  dlm$W <- bdiag(W1, W2)
+  
+  return(dlm)
 }
-df1 <- function(x) {
-  z <- 2 * x
-  return(z)
-}
 
-optim(par = rnorm(2), f = f1, method = "BFGS")
-optim(par = rnorm(1), f = f1, gr = df1, method = "CG")
+fit62 <- dlmMLE(
+  y = price, parm = rnorm(6, 0, 1),
+  build = buildFun62
+)
+dlm62 <- buildFun62(fit62$par)
+# unlist(buildFun61(fit61$par)[c("V", "W")])
+yFilter62 <- dlmFilter(price1, mod = dlm62)
+ySmooth62 <- dlmSmooth(price1, mod = dlm62)
 
-optim_sa(fun = f1, start = rnorm(2), lower = c(-10, -10), upper = c(10, 10))
+mu <- yFilter62$f
+plot.ts(mu[-1,], plot.type = "s", col = c("red", "blue"))
+plot.ts(beta)
+plot.ts(beta[-1, ])
 
-f <- function(x) sin(x * cos(x))
-optim(2, f)$par
-optim
+cbind(price, ySmooth5$s[-1, c(1, 2, 3)]) %>%
+  as_tibble() %>%
+  rename(a_price = price, b_level = V2, c_trend = V3, d_seasonal = V4) %>%
+  mutate(time = c(1:1552)) %>%
+  filter(time < 100) %>%
+  gather("series", "value", -time) %>%
+  ggplot(aes(x = time, y = value, col = series)) +
+  geom_line() +
+  facet_grid(series ~ ., scales = "free_y")
 
-logLik <- function(parm, ...)
-  mod <- build(parm, ...)
-return(dlmLL(y = y, mod = mod, debug = debug))
+res62 <- residuals(yFilter62, sd = F)
+plot.ts(res62)
+abline(a = 0, b = 0, col = "red")
+checkresiduals(res62)
+sapply(1:42, function(x) Box.test(res62, lag = x, type = "Ljung-Box")$p.value)
+shapiro.test(res62)
 
-out <- optim(parm, logLik, method = method, ...)
-return(out)
 
 
-## 7. Bayesian Variance Estimation - Conjugate Prio ===========================
+## 8. Univariate Bayesian Variance Estimation - Conjugate Prio ===========================
 
 data(NelPlo)
 ### multivariate local level -- seemingly unrelated time series
@@ -453,7 +480,7 @@ buildSu(suMLE$par)[c("V", "W")]
 StructTS(NelPlo[, 1], type = "level") ## compare with W[1,1] and V[1,1]
 StructTS(NelPlo[, 2], type = "level") ## compare with W[2,2] and V[2,2]
 
-##
+
 ## 8. Bayesian Variance Estimation - Sequential MCMC ==========================
 
 ## prior
@@ -461,81 +488,14 @@ StructTS(NelPlo[, 2], type = "level") ## compare with W[2,2] and V[2,2]
 ## posterior
 ## new prior
 
-online_mean <- function(theta = 2, sig = 2, n = 100, m_0 = 2, C_0 = 10) {
-  # theta <- 2
-  # sig <- 2
-  # n <- 100
-  y <- theta + rnorm(n = n, mean = 0, sd = sig)
-  sig_sq <- sig^2
-
-  # m_0 <- 100
-  # C_0 <- 100
-
-  filter_y <- vector(length = n, mode = "numeric")
-  filter_ci <- vector(length = n, mode = "numeric")
-  for (i in 1:n) {
-    if (i == 1) {
-      m_prio <- m_0
-      C_prio <- C_0
-    } else {
-      m_prio <- m_post
-      C_prio <- C_post
-    }
-    y_n <- y[i]
-    m_post <- m_prio + (C_prio) / (C_prio + sig_sq) * (y_n - m_prio)
-    C_post <- (sig_sq * C_prio) / (sig_sq + C_prio)
-    filter_y[i] <- m_post
-    filter_ci[i] <- C_post
-  }
-  plot.ts(y, type = "b", col = "blue")
-  lines(filter_y, type = "o", col = "red")
-  lines(filter_y + 1.96 * filter_ci, type = "l", col = "red")
-  lines(filter_y - 1.96 * filter_ci, type = "l", col = "red")
-}
-
-online_mean(theta = 10, sig = 2, n = 100, m_0 = -20, C_0 = 2000)
-
-online_mean_var <- function(theta = 2, sig = 4, n = 100,
-                            m_0 = 2, n_0 = 10, a_0 = 2, b_0 = 2) {
-  y <- theta + rnorm(n = n, mean = 0, sd = sig)
-  sig_sq <- sig^2
-
-  theta_hat <- vector(length = n, mode = "numeric")
-  phi_hat <- vector(length = n, mode = "numeric")
-  for (i in 1:n) {
-    if (i == 1) {
-      m_prio <- m_0
-      n_prio <- n_0
-      a_prio <- a_0
-      b_prio <- b_0
-    } else {
-      m_prio <- m_post
-      n_prio <- n_post
-      a_prio <- a_post
-      b_prio <- b_post
-    }
-    y_n <- y[i]
-    m_post <- m_prio + (y_n - m_prio) / (n_prio + 1)
-    n_post <- n_prio + 1
-    a_post <- a_prio + 0.5
-    b_post <- b_prio + (n_prio * (y_n - m_prio)^2) / (2 * n_prio + 2)
-    theta_hat[i] <- m_post
-    phi_hat[i] <- (b_post) / (a_post)
-  }
-  plot.ts(y, type = "b", col = "blue")
-  lines(theta_hat, type = "o", col = "red")
-  # lines(mean_theta+1.96*var_theta, type = "l", col = "red")
-  # lines(mean_theta-1.96*var_theta, type = "l", col = "red")
-  return(list(y = y, theta = theta_hat, phi = phi_hat))
-}
+## 9.1 Fama & French: Linear Regression =======================================
+## 
 
 
-xx <- online_mean_var(
-  theta = 2, sig = 5, n = 1000,
-  m_0 = 2, n_0 = 10, a_0 = 100, b_0 = 1
-)
-plot.ts(xx$phi, type = "o", col = "red")
-plot.ts(xx$theta, col = "red")
-lines(cumsum(xx$y) / seq(1, 1000), col = "blue")
-# plot.ts(xx$y, type = "b", col = "blue")
-plot.ts(xx$y, type = "b", col = "blue")
+## 9.2 Fama & French: Rolling Regression =======================================
+## 
+
+
+## 9.3 Fama & French: Dynamic Linear Model ====================================
+## 
+
