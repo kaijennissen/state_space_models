@@ -6,7 +6,7 @@ library(timetk)
 library(dlm)
 library(forecast)
 
-## LOAD DATA =============================================================
+## LOAD DATA ==================================================================
 
 symbols <- c("XOM", "CVX", "SLB", "COP", "OXY", "VLO")
 prices <- getSymbols(symbols,
@@ -173,7 +173,6 @@ checkresiduals(res)
 shapiro.test(res)
 sapply(4:42, function(x) Box.test(x = res, lag = x, type = "Ljung", fitdf = 4)$p.value)
 
-
 res <- y - c(mod1$FF %*% mod1$GG %*% t(yFilter$m))[-1]
 plot.ts(res)
 
@@ -200,3 +199,5 @@ plot.ts(yFilter$m[-c(1:50),], plot.type = "s", col = c(1:3))
 
 
 
+
+## BAYESIAN DLM ===============================================================

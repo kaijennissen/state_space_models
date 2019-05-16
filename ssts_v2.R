@@ -11,7 +11,7 @@ library("KFAS")
 library("dlm")
 library("xts")
 ## gasoline - dlm ####
-diesel <- read.zoo("/Users/kj/Documents/02_Studium/04_Data_Masterthesis/avg_v6/xts_all_15_diesel.csv", header = TRUE)
+diesel <- read.zoo("diesel.csv", header = TRUE)
 dim(diesel)
 miss_obs <- 1
 set_count <- 0
