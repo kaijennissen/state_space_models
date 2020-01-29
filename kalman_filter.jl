@@ -48,12 +48,12 @@ function kalman_filter(Y, G, F, W, V, C0, m0)
 end
 
 
-function kalman_filter_recursive(Y, G, F, W, V, C0, m0, t)
+function kalman_filter_recursive(Y, G, F, W, V, C0, m0)
     theta = [];
 
-    if t > 0
+    if size(theta, 1) > 0
         # pred state
-        m, C, theta = kalman_filter_recursive(Y, G, F, W, V, C0, m0, t-1)
+        m, C, theta = kalman_filter_recursive(Y, G, F, W, V, C0, m0)
         a = G*m
         R = G*C*G'+W
 
@@ -68,7 +68,7 @@ function kalman_filter_recursive(Y, G, F, W, V, C0, m0, t)
 
         append!(theta, m[:,1])
 
-    elseif t == 0
+    elseif size(theta, 1) == 0
         m = m0
         C = C0
     end
