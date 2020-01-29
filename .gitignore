@@ -1,18 +1,19 @@
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
 
-# Session Data files
-*.RData
+.DS_Store
 
-# data
-*.csv
-*.xls
-*.xlsx
-*.txt
+# Session Data files
+.RData
 
 # Example code in package build process
 *-Ex.R
+
+# Matlab Files
+*.m
 
 # Output files from R CMD build
 /*.tar.gz
@@ -22,6 +23,7 @@
 
 # RStudio files
 .Rproj.user/
+*.Rproj
 
 # produced vignettes
 vignettes/*.html
@@ -33,6 +35,7 @@ vignettes/*.pdf
 # knitr and R markdown default cache directories
 /*_cache/
 /cache/
+*/data
 
 # Temporary files created by R markdown
 *.utf8.md
@@ -40,3 +43,16 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+
+# Data Files
+*.csv
+*.txt
+*.pdf
+*.mat
+*.xlsx
+*.xls
+*.dat
+
+packrat/lib*/
+
+
