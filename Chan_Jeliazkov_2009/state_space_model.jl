@@ -1,10 +1,3 @@
-#------------------------------------------------------------------------------
-# Julia Code for a fast Kalman Filter based on
-# Chan, J.C.C. and Jeliazkov, I. (2009). Efficient Simulation and
-# Integrated Likelihood Estimation in State Space Models,
-# International Journal of Mathematical Modelling and Numerical
-# Optimisation, 1, 101-120.
-#------------------------------------------------------------------------------
 using LinearAlgebra
 using CSV
 using SparseArrays
@@ -94,13 +87,14 @@ mutable struct StateSpaceModel
     TTqq::Int
 
     # constructor
-    function StateSpaceModel(y)
-        y0 = y[1:3, :];
-        Y = y[4:end, :];
+    function StateSpaceModel(y, p)
+        y0 = y[1:p, :];
+        Y = y[p+1:end, :];
         tt = size(y, 1);
         nn = size(y, 2);
         TT = size(Y, 1);
-        qq = nn*(nn+1);
+        nnp = nn*p;
+        qq = nnp*2+nn;
         TTqq = TT*qq;
         bigY= reshape(Y',:,1);
         new(y0, Y, bigY, tt, nn, qq, TT, TTqq)
@@ -109,13 +103,15 @@ end
 
 
 
+
+
 function sample_eta(ssm)
-    ssm.bigS_inv = construct_constant_bigS_inv(DD_inv, Omega22_inv, TT);
-    ssm.bigOmega11_inv = kron(sparse(1.0I,TT,TT), Omega11_inv);
-    ssm.bigGamma = zeros(1,1);
-    ssm.bigBeta = zeros(1, 1);
-    K = ssm.bigHT * ssm.bigS_inv * ssm.bigH
-    P = K + bigGT * ssm.bigOmega11_inv * ssm.bigG
+    bigS_inv = construct_constant_bigS_inv(DD_inv, Omega22_inv, TT);
+    bigOmega11_inv = kron(sparse(1.0I,TT,TT), Omega11_inv);
+    bigGamma = zeros(1,1);
+    bigBeta = zeros(1, 1);
+    K = bigHT * bigS_inv * bigH
+    P = K + bigGT * bigOmega11_inv * bigG
     C = cholesky(P, perm=1:ssm.TTqq);
     L = sparse(C.L);
 
@@ -147,18 +143,19 @@ function sample_omega22(ssm)
 end
 
 function construct(ssm)
-    ssm.bigX = construct_bigX(ssm.TT, ssm.nn, ssm.qq, ssm.X);
-    ssm.bigZ = construct_bigZ(ssm.TT, ssm.nn, ssm.qq, ssm.Z);
-    ssm.bigGT = sparse_transpose(ssm.bigG);
-    ssm.bigHT = sparse_transpose(ssm.bigH);
-    ssm.bigG = construct_constant_bigG(ssm.TT, ssm.G);
-    ssm.bigH = construct_constant_bigH(ssm.TT, ssm.qq, ssm.F);
+    bigX = construct_bigX(ssm.TT, ssm.nn, ssm.qq, ssm.X);
+    bigZ = construct_bigZ(ssm.TT, ssm.nn, ssm.qq, ssm.Z);
+    bigGT = sparse_transpose(bigG);
+    bigHT = sparse_transpose(bigH);
+    bigG = construct_constant_bigG(ssm.TT, ssm.G);
+    bigH = construct_constant_bigH(ssm.TT, ssm.qq, ssm.F);
+    return bigX, bigZ, bigGT, bigHT, bigG, bigH
 end
 
 
 function gibbs_sampler(ssm, nsim, burnin)
 
-    construct(ssm)
+    bigX, bigZ, bigGT, bigHT, bigG, bigH = construct(ssm);
 
     # initialize storeage
     store_eta = zeros(ssm.TTqq, nsim);
@@ -168,19 +165,41 @@ function gibbs_sampler(ssm, nsim, burnin)
     for i in 1:(burnin+nsim)
 
         # sample eta
-        eta = sample_eta(ssm)
+        bigS_inv = construct_constant_bigS_inv(DD_inv, Omega22_inv, TT);
+        bigOmega11_inv = kron(sparse(1.0I,TT,TT), Omega11_inv);
+        bigGamma = zeros(1,1);
+        bigBeta = zeros(1, 1);
+        K = bigHT * bigS_inv * bigH
+        P = K + bigGT * bigOmega11_inv * bigG
+        C = cholesky(P, perm=1:ssm.TTqq);
+        L = sparse(C.L);
+
+        # eta_hat
+        eta_tilde = bigH\(bigZ*bigGamma)
+        eta_hat = K * eta_tilde + bigGT * (bigOmega11_inv * (ssm.bigY - ssm.bigX * ssm.bigBeta))
+
+        # sample eta
+        eta = (eta_hat + L' \ rand(Normal(),ssm.TTqq));
 
         # sample other variables
         # sample Omega11
-        Omega11 = sample_omega11(ssm)
+        e1 = reshape(ssm.bigY - ssm.bigG * ssm.bigEta, ssm.nn,:);
+        new_S01 = ssm.S01 + e1*e1';
+        Omega11 = rand(InverseWishart(ssm.new_nu01, new_S01));
+        Omega11_inv = sparse(Symmetric(Omega11\I(ssm.nn)));
 
         # sample Omega22
-        Omega2 = sample_omega22(ssm)
+        e2 = reshape(ssm.bigH * ssm.bigEta, ssm.qq, ssm.TT)';
+        new_S02 = (ssm.S02 + sum(e2[2:end,:].^2, dims=1)[:])/2;
+        for i in 1:ssm.qq
+            Omega22[i,i] = rand(InverseGamma(ssm.new_nu02[i], new_S02[i]));
+        end
+        Omega22_inv = Omega22\sparse(1.0I, ssm.qq, ssm.qq);
 
         # store
         if isim > burnin
             i = isim - burnin;
-            store_beta[:, i] = beta;
+            store_eta[:, i] = eta;
             store_Omega11[:,:, i] = Omega11;
             store_Omega22[:, i] = diag(Omega22);
         end
