@@ -1,1 +1,3 @@
-# state_space_models
+# State Space Models
+
+A collection of algorithms used for state space models.
