@@ -1,30 +1,7 @@
+# Petris, G. & Petrone, S. & Campagnoli, P. (2009).
+# Dynamic Linear Models with R.
+# p. 166
 library(dlm)
-
-
-y <- AirPassengers
-y_log <- log(y)
-
-
-build_dlm <- function(param) {
-  dlm1 <- dlmModPoly(order=2) + dlmModSeas(frequency = 12)
-  V(dlm1) <- exp(param[1])
-  diag(W(dlm1))[c(1:3)] <- exp(param[2:4])
-  return(dlm1)
-}
-
-
-fit <- dlmMLE(y = y_log, parm = rnorm(4), build = build_dlm)
-fit$convergence
-exp(fit$par)
-
-dlm1 <- build_dlm(fit$par)
-dlm1_filtered <- dlmFilter(y = y_log, mod = dlm1)
-plot.ts(cbind(dlm1_filtered$m[-(1:21),1], y_log[-(1:20)]), plot.type = "single", col= c("red", "blue"))
-plot.ts(cbind(dlm1_filtered$m[-(1:21),1]+dlm1_filtered$m[-(1:21),3], y_log[-(1:20)]), plot.type = "single", col= c("red", "blue"))
-
-
-# p 166
-write.csv(Nile, "Nile.csv")
 
 a1 <- 2
 b1 <- 0.0001
