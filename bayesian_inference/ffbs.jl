@@ -5,9 +5,9 @@
 #------------------------------------------------------------------------------
 using LinearAlgebra
 using CSV
-using SparseArrays
 using Plots
 using Statistics
+using Distributions
 
 
 add_dim(x::Array) = reshape(x, (size(x)...,1))
@@ -199,82 +199,99 @@ plot!(theta_hat)
 
 # Example 2: AirPassengers
 # Local Linear Trend + Seasonality with unknown Variance
-data_raw = CSV.read("AirPassengers.csv", header = 0);
+data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
 y = map(x->parse(Float64,x), data_raw[2:end, 2]);
 plot(y)
-plot(broadcast(log, y))
+#plot(broadcast(log, y))
 
 function gibbs_sampler_2(y, nsim, nburn)
     T = size(y, 1);
     N = nsim+nburn;
+    Y = add_dim(y);
 
     # model matrices
+    # y_t = F_t * theta_t + v_t   v_t ~ N(0, V_t)
+    # theta_t = G_t * theta_t-1 + w_t   v_t ~ N(0, W_t)
     F = [1 0 1 zeros(1, 10)];
-    V = 1.3*1e-4*ones(1, 1);
     G = zeros(13, 13);
     G[1, 1] = 1;
     G[1, 2] = 1;
     G[2, 2] = 1;
     G[3, 3:end] = -1*ones(11);
     G[4:13, 3:12] = 1.0I(10);
+
+    V = ones(1, 1);
     W = zeros(13, 13);
-    W[1, 1] = 7*1e-4;
-    W[2, 2] = 3.5*1e-13;
-    W[3, 3] = 6.4*1e-5;
-    m0 = [4.81; 0.01; seas[2:end]];
+    W[1:3, 1:3] = 1.0*I(3);
+
+    m0 = zeros(1, 13);
     C0 = 1e7*I(13);
 
-    G = ones(1, 1);
-    F = ones(1, 1);
-    W = ones(1, 1);
-    V = ones(1, 1);
-    m0 = zeros(1, 1);
-    C0 = 1e7 * ones(1, 1);
-    Y = add_dim(y);
+    # prior hyperparameters
+    a_psiy = 2;
+    b_psiy = 0.0001;
 
-    a1 = 2;
-    b1 = 0.0001;
-    a2 = 2;
-    b2 = 0.0001;
+    a_psi1 = 2;
+    b_psi1 = 0.0001;
+    a_psi2 = 2;
+    b_psi2 = 0.0001;
+    a_psi2 = 2;
+    b_psi2 = 0.0001;
 
-    new_a1 = a1 +T/2;
-    new_a2 = a2 +T/2;
+    new_a_psiy = a_psiy + T/2;
+    new_a_psi1 = a_psi1 + T/2;
+    new_a_psi2 = a_psi2 + T/2;
+    new_a_psi3 = a_psi3 + T/2;
 
-    store_phi1 = [];
-    store_phi2 = [];
+    store_psi_y = [];
+    store_psi_1 = [];
+    store_psi_2 = [];
+    store_psi_3 = [];
     store_theta = [];
-
-    V = 1;
-    W = 1;
 
     for i in 1:N
         # FFBS
-        theta = FFBS(Y, G, F, [W], [V], C0, m0);
+        theta = FFBS(Y, G, F, W, V, C0, m0);
         theta = theta[end:-1:1];
 
+        # TODO derive full conditional for psi
         # draw phi_1
         ytheta = Y-theta
-        new_b1 = b1 + 0.5 * (ytheta'*ytheta)[]
-        phi1 = rand(Gamma(new_a1, 1/new_b1));
-        V = phi1^-1
+        new_b_psiy # = b1 + 0.5 * (ytheta'*ytheta)[]
+        psiy = rand(Gamma(new_a1, 1/new_b1));
+        V[1, 1] = 1/psiy
 
-        # draw phi_2
+        # draw psi_1
         Δtheta = theta[2:T]-theta[1:T-1]
-        new_b2 = b2 + 0.5 * (Δtheta'*Δtheta)[]
-        phi2 = rand(Gamma(new_a2, 1/new_b2));
-        W = phi2^-1
+        new_b_psi1 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
+        psi1 = rand(Gamma(new_a_psi1, 1/new_b_psi1));
+        W[1, 1] = 1/psi1
+
+        # draw psi_2
+        Δtheta = theta[2:T]-theta[1:T-1]
+        new_b_psi2 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
+        psi2 = rand(Gamma(new_a_psi2, 1/new_b_psi2));
+        W[2, 2] = 1/psi2
+
+        # draw psi_3
+        Δtheta = theta[2:T]-theta[1:T-1]
+        new_b_psi3 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
+        psi3= rand(Gamma(new_a_psi3, 1/new_b_psi3));
+        W[3, 3] = 1/psi3
 
         if i > nburn
-            push!(store_phi1, phi1);
-            push!(store_phi2, phi2);
+            push!(store_psi_y, psi_y);
+            push!(store_psi_1, psi_1);
+            push!(store_psi_2, psi_2);
+            push!(store_psi_3, psi_3);
             append!(store_theta, theta);
         end
     end
-    return store_phi1, store_phi2, store_theta
+    return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
 
-@time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20, 10);
-@time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20000, 10000);
+@time store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta = gibbs_sampler(y, 20, 10);
+@time store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta = gibbs_sampler(y, 20000, 10000);
 
 plot(cumsum(store_phi1)./collect(1:20000))
 plot(cumsum(store_phi2)./collect(1:20000))
