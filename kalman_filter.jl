@@ -17,7 +17,6 @@ add_dim(x::Array) = reshape(x, (size(x)...,1))
 # State Space Equation
 # y_t = F_t * x_t + vega_t  vega_t ~ N(0, V_t)
 # x_t = G_t * x_t-1 + omega_t  omega_t ~ N(0, W_t)
-
 function kalman_filter(Y, G, F, W, V, C0, m0)
 
     theta = [];
@@ -151,13 +150,8 @@ W[1, 1] = 7*1e-4;
 W[2, 2] = 3.5*1e-13;
 W[3, 3] = 6.4*1e-5;
 m0 = [4.81; 0.01; seas[2:end]];
-#m0 = mean(reshape(Y, 12,12), dims=2).-mean(reshape(Y, 12,12));
 C0 = 1e7*I(13);
-#C0[1, 1] = 0.01;
-#C0[2, 2] = 0.01;
-#C0[3, 3] = 0.5;
 
-#theta1 = kalman_filter(Y, G, F, W, V, C0, m0);
 m, C, theta2 = kalman_filter_recursive(Y, G, F, W, V, C0, m0, 144)
 theta1 = reshape(theta2, 13, 144)'
 
