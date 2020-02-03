@@ -47,10 +47,11 @@ EXPOSE 22 7777
 ########################################################
 # Add custom packages and development environment here
 ########################################################
-RUN julia -O3 -e 'using Pkg; Pkg.add("CSV")'
-#RUN julia -O3 -e 'using Pkg;Pkg.REPLMode.pkgstr("add https://github.com/JuliaComputing/MKL.jl ;precompile");using CSV'
-#RUN julia -O3 -e 'using Pkg;Pkg.REPLMode.pkgstr("add Distributions   ;precompile");using Distributions'
-#RUN julia -O3 -e 'using Pkg;Pkg.REPLMode.pkgstr("add Plots   ;precompile");using Plots'
+RUN julia -O3 -e 'using Pkg; Pkg.add("CSV"); using CSV'
+RUN julia -O3 -e 'using Pkg; Pkg.add("Distributions"); using Distributions'
+RUN julia -O3 -e 'using Pkg; Pkg.add("Plots"); using Plots'
+RUN julia -03 -e 'using Pkg; Pkg.add("JuliaInterpreter"); using JuliaInterpreter'
+RUN julia -O3 -e 'using Pkg; Pkg.REPLMode.pkgstr("add https://github.com/JuliaComputing/MKL.jl")'
 
 ########################################################
 COPY startup.sh / 
