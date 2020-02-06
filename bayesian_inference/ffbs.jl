@@ -8,7 +8,7 @@ using CSV
 using Plots
 using Statistics
 using Distributions
-
+using Random
 
 add_dim(x::Array) = reshape(x, (size(x)...,1))
 
@@ -62,6 +62,119 @@ function FFBS(Y, G, F, W, V, C0, m0)
         append!(store_theta, theta)
 
     end
+    return store_theta
+end
+
+function svd_forward_backward(Y, G, F, W, V, C0, m0)
+    epss = eps(Float64)^0.4
+    T = size(Y, 1);
+    q1 = size(V, 1);
+    q2 = size(W, 1);
+
+    store_a = zeros(q2, T+1);
+    store_m = zeros(q2, T+1);
+    store_D_plus = zeros(q2, q2, T+1);
+    store_U_plus = zeros(q2, q2, T+1);
+    store_D = zeros(q2, q2, T);
+    store_U = zeros(q2, q2, T);
+    store_theta = zeros(q2, T+1)
+
+    m = m0;
+    C = C0;
+    # predict
+    a = G*m
+
+    USVT = svd(C);
+    U_plus = Matrix(USVT.U);
+    D_plus = Matrix(Diagonal(USVT.S .^0.5));
+
+    store_a[:,1] = a;
+    store_m[:,1] = m;
+    store_D_plus[:,:,1] = U_plus;
+    store_U_plus[:,:,1] = U_plus;
+
+    for t in 1:T
+
+
+
+        # update U and D
+        W_sq = W^0.5
+        USVT = svd(Matrix([D_plus*U_plus'*G' ; W_sq]))
+        U = USVT.V
+        D = Diagonal(USVT.S)
+        D_inv = Matrix(Diagonal(1 ./ USVT.S))
+
+        L = Matrix(cholesky(inv(V)).L)
+
+        USVT = svd(Matrix([L'*F*U; D_inv]))
+        V_star = USVT.V
+        D_star = Diagonal(USVT.S)
+        D_star_inv = Diagonal(1 ./ USVT.S)
+
+        U_plus = U*V_star
+        D_plus = D_star_inv #D_star^-1
+
+        # compute gain K
+        K = U_plus*(D_plus^2)*U_plus'*F'*L*L'
+
+        # update estimate x
+        m = a + K*(Y[t:t]-F*a)
+        # predict
+        a = G*m
+
+        store_a[:,t+1] = a;
+        store_m[:,t+1] = m;
+        store_D_plus[:,:,t+1] = D_plus;
+        store_U_plus[:,:,t+1] = U_plus;
+        #store_D[:,:,t] = D;
+        #store_U[:,:,t] = U;
+
+    end
+
+    m = store_m[:,T+1];
+    D_plus = store_D_plus[:,:,T+1];
+    U_plus = store_U_plus[:,:,T+1];
+
+    h = m;
+
+    theta = h + U_plus*D_plus*randn(q2)
+    store_theta[:,T+1] = theta;
+
+    # W is time invariant
+    tmp = svd(W)
+    DW = tmp.S .^ 0.5
+    DW = maximum([DW epss*ones(13,1)], dims=2)
+    DW_inv = Diagonal(1 ./ DW)
+
+    sqrtWinv = tmp.Vt'*DW_inv^2*tmp.Vt
+
+    L_star = DW_inv*tmp.Vt
+
+    for t in collect(T:-1:1)
+
+        a = store_a[:,t+1];
+        m = store_m[:,t];
+        D_plus = store_D_plus[:,:,t];
+        U_plus = store_U_plus[:,:,t];
+        #D = store_D[:,:,t];
+        #U = store_U[:,:,t];
+
+        tmp = svd(Matrix([L_star'*G*U_plus; D_plus^-1]))
+        V_tri = tmp.Vt
+
+        U_sq = U_plus*V_tri'
+        D_sq = tmp.S .^ -1
+
+        D_sq[findall(a -> a == Inf, D_sq)] .= 0
+        D_sq = Diagonal(D_sq)
+
+        h = m + U_sq*D_sq^2*U_sq'*G'sqrtWinv*(theta-a)
+        theta = h + U_sq*D_sq*randn(q2)
+
+        store_theta[:,t] = theta
+
+    end
+
     return store_theta
 end
 
@@ -201,12 +314,12 @@ plot!(theta_hat)
 # Local Linear Trend + Seasonality with unknown Variance
 data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
 y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-plot(y)
+y = broadcast(log, y);
 #plot(broadcast(log, y))
 
-function gibbs_sampler_2(y, nsim, nburn)
+function gibbs_sampler_2(y, nsim)
     T = size(y, 1);
-    N = nsim+nburn;
+    N = nsim;
     Y = add_dim(y);
 
     # model matrices
@@ -224,7 +337,7 @@ function gibbs_sampler_2(y, nsim, nburn)
     W = zeros(13, 13);
     W[1:3, 1:3] = 1.0*I(3);
 
-    m0 = zeros(1, 13);
+    m0 = zeros(13, 1);
     C0 = 1e7*I(13);
 
     # prior hyperparameters
@@ -235,71 +348,117 @@ function gibbs_sampler_2(y, nsim, nburn)
     b_psi1 = 0.0001;
     a_psi2 = 2;
     b_psi2 = 0.0001;
-    a_psi2 = 2;
-    b_psi2 = 0.0001;
+    a_psi3 = 2;
+    b_psi3 = 0.0001;
+    psiy = 1
+    psi1 = 1
+    psi2 = 1
+    psi3 = 1
 
     new_a_psiy = a_psiy + T/2;
     new_a_psi1 = a_psi1 + T/2;
     new_a_psi2 = a_psi2 + T/2;
     new_a_psi3 = a_psi3 + T/2;
 
-    store_psi_y = [];
-    store_psi_1 = [];
-    store_psi_2 = [];
-    store_psi_3 = [];
-    store_theta = [];
+    store_psi_y = zeros(N);
+    store_psi_1 = zeros(N);
+    store_psi_2 = zeros(N);
+    store_psi_3 = zeros(N);
+    store_theta = zeros(13, T+1, N)
 
     for i in 1:N
         # FFBS
-        theta = FFBS(Y, G, F, W, V, C0, m0);
-        theta = theta[end:-1:1];
+        theta = svd_forward_backward(Y, G, F, W, V, C0, m0);
+        #@infiltrate
+        #theta = theta[:,end:-1:1];
 
-        # TODO derive full conditional for psi
-        # draw phi_1
-        ytheta = Y-theta
-        new_b_psiy # = b1 + 0.5 * (ytheta'*ytheta)[]
-        psiy = rand(Gamma(new_a1, 1/new_b1));
-        V[1, 1] = 1/psiy
+        # draw phi_y
+        ytheta = Y-(F*theta[:,2:end])'
+        SS_y = (ytheta'*ytheta)[1];
+        new_b_psiy = b_psiy + 0.5 * SS_y;
+        psiy = rand(Gamma(new_a_psiy, 1/new_b_psiy));
+        V[1, 1] = 1/psiy;
+
+        # SS_theta
+        Δtheta = theta[:,2:end]-G'theta[:,1:end-1];
 
         # draw psi_1
-        Δtheta = theta[2:T]-theta[1:T-1]
-        new_b_psi1 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
+        SS_theta1 = Δtheta[1,:]*Δtheta[1,:]';
+        new_b_psi1 = b_psi1 + 0.5 * SS_theta1[1];
         psi1 = rand(Gamma(new_a_psi1, 1/new_b_psi1));
         W[1, 1] = 1/psi1
 
         # draw psi_2
-        Δtheta = theta[2:T]-theta[1:T-1]
-        new_b_psi2 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
+        SS_theta2 = Δtheta[2,:]*Δtheta[2,:]';
+        new_b_psi2 = b_psi2 + 0.5 * SS_theta2[1];
         psi2 = rand(Gamma(new_a_psi2, 1/new_b_psi2));
-        W[2, 2] = 1/psi2
+        W[2, 2] = 1/psi2;
 
         # draw psi_3
-        Δtheta = theta[2:T]-theta[1:T-1]
-        new_b_psi3 # = b2 + 0.5 * (Δtheta'*Δtheta)[]
-        psi3= rand(Gamma(new_a_psi3, 1/new_b_psi3));
+        SS_theta3 = Δtheta[3,:]*Δtheta[3,:]';
+        new_b_psi3 = b_psi3 + 0.5 * SS_theta3[1];
+        psi3 = rand(Gamma(new_a_psi3, 1/new_b_psi3));
         W[3, 3] = 1/psi3
 
-        if i > nburn
-            push!(store_psi_y, psi_y);
-            push!(store_psi_1, psi_1);
-            push!(store_psi_2, psi_2);
-            push!(store_psi_3, psi_3);
-            append!(store_theta, theta);
-        end
+        store_psi_y[i] = psiy;
+        store_psi_1[i] =  psi1;
+        store_psi_2[i] =  psi2;
+        store_psi_3[i] =  psi3;
+        store_theta[:,:,i] = theta;
     end
     return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
 
-@time store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta = gibbs_sampler(y, 20, 10);
-@time store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta = gibbs_sampler(y, 20000, 10000);
+@time gibbs_sampler_2(y, 3);
 
-plot(cumsum(store_phi1)./collect(1:20000))
-plot(cumsum(store_phi2)./collect(1:20000))
+nsim = 1000
+Random.seed!(10);
+@time store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta = gibbs_sampler_2(y, nsim);
 
-phi1_hat = mean(store_phi1);
-phi2_hat = mean(store_phi2);
-theta = reshape(store_theta, 100, 20000);
-theta_hat = mean(theta, dims=2)
+plot(cumsum(store_psi_y) ./ collect(1.0:nsim))
+plot(cumsum(store_psi_1) ./ collect(1.0:nsim))
+plot(cumsum(store_psi_2) ./ collect(1.0:nsim))
+plot(cumsum(store_psi_3) ./ collect(1.0:nsim))
 
-plot(y)
-plot!(theta_hat)
+psiy_hat = mean(store_psi_y[1001:end]);
+psi1_hat = mean(store_psi_1[1001:end]);
+psi2_hat = mean(store_psi_2[1001:end]);
+psi3_hat = mean(store_psi_3[1001:end]);
+
+theta_hat = mean(store_theta, dims=3)[:,:,1];
+
+plot(y, legend=false)
+plot!(theta_hat[1,:])
+
+# Diagnostics
+theta_mc = reshape(store_theta, 13, :)'*F';
+theta_mc = reshape(theta_mc, 145,:)
+SS_y = zeros(nsim);
+for i in 1:nsim
+    SS_y[i] = theta_mc[:,i]'*theta_mc[:,i]
+end
+plot(SS_y[101:end])
+median(SS_y[101:end])
+
+
+thetaG = zeros(13, 143, nsim)
+for i in 1:nsim
+  thetaG[:,:,i] = store_theta[:,2:end,i] - G*store_theta[:,1:end-1,i]
+end
+
+SS_theta1 = zeros(nsim)
+for i in 1:nsim
+  SS_theta1[i] = thetaG[1,:,i]'*thetaG[1,:,i]
+end
+plot(SS_theta1[101:end])
+median(SS_theta1[101:end])
+
+
+
+F = [1 0 1 zeros(1, 10)];
+G = zeros(13, 13);
+G[1, 1] = 1;
+G[1, 2] = 1;
+G[2, 2] = 1;
+G[3, 3:end] = -1*ones(11);
+G[4:13, 3:12] = 1.0I(10);

@@ -8,58 +8,25 @@ using CSV
 using Plots
 using Statistics
 using Distributions
-using JuliaInterpreter
-using Infiltrator
 
-function crossprod(X)
-    return X'X
-end
-
-data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
-y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-plot(y)
-Y=broadcast(log, y);
-
-H = [1 0 1 zeros(1, 10)];
-Psi = zeros(13, 13);
-Psi[1, 1] = 1;
-Psi[1, 2] = 1;
-Psi[2, 2] = 1;
-Psi[3, 3:end] = -1*ones(11);
-Psi[4:13, 3:12] = 1.0I(10);
-
-R = 1.0/22814.31*ones(1, 1);
-Q = zeros(13, 13);
-Q[1:3, 1:3] = 1.0*I(3);
-Q[1, 1] = 1.0/2472.64;
-Q[2, 2] = 1.0/55947.63;
-Q[3, 3] = 1.0/4309.207;
-
-G = 1.0I(13);
-
-x0 = zeros(13,1);
-P0 = 1e7I(13);
 
 function svd_kalman(Y, H, Psi, G, R, Q, P0, x0)
     T = size(Y, 1);
     q1 = size(R, 1);
     q2 = size(Q, 1);
 
-    store_a = zeros(q2, T);
-    store_R = zeros(q2, q2, T);
-    store_m = zeros(q2, T);
-    store_C = zeros(q2, q2, T);
-
     store_x = zeros(q2, T+1)
 
-    x̂ = x0;
+    x̂_plus = x0;
     P = P0;
 
     UDUT = svd(P);
     U = Matrix(UDUT.U);
-    D = Diagonal(UDUT.S);
+    D = Diagonal(UDUT.S)^0.5;
+    x̂ = Psi*x̂_plus
 
     for t in 1:T
+
 
         # update U and D
         L = Matrix(cholesky(inv(R)).L)
@@ -91,7 +58,32 @@ function svd_kalman(Y, H, Psi, G, R, Q, P0, x0)
     return store_x
 end
 
-@time store_x = svd_kalman(Y, H, Psi, G, R, Q, C0, m0)
+
+data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
+y = map(x->parse(Float64,x), data_raw[2:end, 2]);
+plot(y)
+Y=broadcast(log, y);
+
+H = [1 0 1 zeros(1, 10)];
+Psi = zeros(13, 13);
+Psi[1, 1] = 1;
+Psi[1, 2] = 1;
+Psi[2, 2] = 1;
+Psi[3, 3:end] = -1*ones(11);
+Psi[4:13, 3:12] = 1.0I(10);
+
+R = 1.0/22814.31*ones(1, 1);
+Q = zeros(13, 13);
+Q[1, 1] = 1.0/2472.64;
+Q[2, 2] = 1.0/55947.63;
+Q[3, 3] = 1.0/4309.207;
+
+G = 1.0I(13)
+
+x0 = zeros(13,1);
+P0 = 1e7I(13);
+
+@time store_x = svd_kalman(Y, H, Psi, G, R, Q, P0, x0)
 
 plot(1:145, store_x[1,:])
 
