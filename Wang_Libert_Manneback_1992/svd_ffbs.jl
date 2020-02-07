@@ -117,7 +117,21 @@ function svd_ffbs(Y, G, F, W, V, C0, m0)
     tmp = svd(C);
     U_plus = Matrix(tmp.Vt);
     D_plus = Diagonal(tmp.S .^0.5);
-    #D_inv = Diagonal(tmp.S .^-0.5);
+
+    tmp = svd(V);
+    Uv = tmp.Vt';
+    Dv = tmp.S.^0.5
+    Dv_inv = 1 ./ Dv;
+    Dv_inv[findall(x -> x == Inf, Dv_inv)] .= 0
+    sqrtVinv = Dv_inv * tmp.Vt
+
+    tmp = svd(W);
+    Uw = tmp.Vt';
+    Dw = tmp.S .^0.5
+    sqrtW = Diagonal(Dw)
+    Dw_inv = 1 ./ Dw ;
+    Dw_inv[findall(x -> x == Inf, Dw_inv)] .= 0
+    sqrtWinv = Diagonal(Dw_inv) * tmp.Vt
 
     store_xm[:,1] = m;
     store_a[:,1] = a;
@@ -126,16 +140,6 @@ function svd_ffbs(Y, G, F, W, V, C0, m0)
     store_U_plus[:,:,1] = U_plus;
 
     for t in 1:T
-
-        tmp = svd(V);
-        Uv = tmp.Vt';
-        Dv = tmp.S.^0.5
-        Dv_inv = 1 ./ Dv;
-        Dv_inv[findall(x -> x == Inf, Dv_inv)] .= 0
-        sqrtVinv = Dv_inv * tmp.Vt
-
-        tmp = svd(W)
-        sqrtW = Diagonal(tmp.S)^0.5 * tmp.Vt
 
         # prior
         a = G*m
@@ -183,50 +187,56 @@ function svd_ffbs(Y, G, F, W, V, C0, m0)
         store_U[:,:,t] = U;
     end
 
-    # m = store_m[:,T+1];
-    # D_plus = store_D_plus[:,:,T+1];
-    # U_plus = store_U_plus[:,:,T+1];
-    #
-    # h = m;
-    #
-    # theta = h + U_plus*(D_plus*randn(q2))
-    # store_theta[:,T+1] = theta;
-    #
-    # for t in collect(T:-1:1)
-    #
-    #     a = store_a[:,t];
-    #     m = store_m[:,t];
-    #     D_plus = store_D_plus[:,:,t];
-    #     U_plus = store_U_plus[:,:,t];
-    #     D = store_D[:,:,t];
-    #     U = store_U[:,:,t];
-    #
-    #     tmp = svd(W)
-    #     DW = tmp.S .^ 0.5
-    #     DW = maximum([DW epss*ones(13,1)], dims=2)
-    #     DW_inv = Diagonal(1 ./ DW)
-    #     sqrtWinv = tmp.Vt'*DW_inv^2*tmp.Vt
-    #
-    #     L_star = DW_inv*tmp.Vt
-    #     tmp = svd(Matrix([L_star'*G*U_plus; D_plus^-1]))
-    #     V_tri = tmp.Vt
-    #
-    #     U_sq = U_plus*V_tri'
-    #     D_sq = tmp.S .^ -1
-    #
-    #     D_sq[findall(a-> a == Inf, D_sq)] .= 0
-    #     D_sq = Diagonal(D_sq)
-    #
-    #     h = m + U_sq*D_sq^2*U_sq'*G'sqrtWinv*(theta-a)
-    #     theta = h + U_sq*D_sq*randn(q2)
-    #
-    #     store_theta[:,t] = theta
-    #
-    # end
+    m = store_m[:,T+1];
+    D_plus = store_D_plus[:,:,T+1];
+    U_plus = store_U_plus[:,:,T+1];
+
+    h = m;
+
+    theta = h + U_plus*(D_plus*randn(q2))
+    store_theta[:,T+1] = theta;
+
+    tmp = svd(W);
+    Uw = tmp.Vt';
+    Dw = tmp.S .^0.5
+    sqrtW = Diagonal(Dw)
+    DW_inv = 1 ./ Dw ;
+    DW_inv[findall(x -> x == Inf, Dw_inv)] .= 0
+    sqrtWinv = Diagonal(Dw_inv) * tmp.Vt
+
+
+    for t in collect(T:-1:1)
+
+        a = store_a[:,t];
+        m = store_m[:,t];
+        D_plus = store_D_plus[:,:,t];
+        U_plus = store_U_plus[:,:,t];
+        D = store_D[:,:,t];
+        U = store_U[:,:,t];
+
+        D_plus_inv = D_plus^-1
+
+        tmp = svd(Matrix([sqrtWinv*tmp.Vt*G*U_plus; D_plus_inv]))
+        V_tri = tmp.Vt
+
+        U_sq = U_plus*V_tri'
+        D_sq = tmp.S .^ -1
+
+        D_sq[findall(a-> a == Inf, D_sq)] .= 0
+        D_sq = Diagonal(D_sq)
+
+        h = m + U_sq*D_sq^2*U_sq'*G'sqrtWinv*(theta-a)
+        theta = h + U_sq*D_sq*randn(q2)
+
+        store_theta[:,t] = theta
+
+    end
 
     return store_m', store_xm'
     #return store_theta
 end
+
+theta_svd, theta = svd_ffbs(Y, G, F, W, V, C0, m0)
 
 function local_trend_seasonal(y)
     Y = broadcast(log, y)
@@ -239,16 +249,14 @@ function local_trend_seasonal(y)
     G[3, 3:end] = -1*ones(11);
     G[4:end, 3:end-1] = 1.0I(10);
 
-    V = 1.0/22814.31*ones(1, 1);
-    W = Diagonal([1.0/2472.64; 1.0/55947.63; 1.0/4309.207, zeros(10,1)]); #zeros(q, q);
-    #W[1, 1] = 1.0/2472.64;
-    #W[2, 2] = 1.0/55947.63;
-    #W[3, 3] = 1.0/4309.207;
+    V = ones(1, 1);
+    W = Diagonal([ones(3); zeros(10)]);
 
     m0 = zeros(q,1);
     C0 = 1e7I(q);
     return Y, G, F, W, V, C0, m0
 end
+
 
 
 # Example 1
@@ -257,6 +265,17 @@ y = map(x->parse(Float64,x), data_raw[2:end, 2]);
 plot(y);
 
 Y, G, F, W, V, C0, m0 = local_trend_seasonal(y);
+
+# Singular Value Algorithm - FFBS
+theta_svd, theta = svd_ffbs(Y, G, F, W, V, C0, m0)
+
+plot(Y, legend=false)
+plot!(theta[1,:])
+
+plot(Y)
+plot!((F*theta)')
+
+
 
 # Conventional Kalman Filter
 store_theta = kalman_filter(Y, G, F, W, V, C0, m0)
@@ -275,13 +294,3 @@ plot!(store_theta[1,:])
 
 plot(Y)
 plot!((F*store_theta)')
-
-
-# Singular Value Algorithm - FFBS
-theta_svd, theta = svd_ffbs(Y, G, F, W, V, C0, m0)
-
-plot(Y, legend=false)
-plot!(theta[1,:])
-
-plot(Y)
-plot!((F*theta)')

@@ -1,4 +1,4 @@
-FROM julia:1.3.1-buster
+FROM julia:1.4.0-buster
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -30,11 +30,11 @@ RUN apt-get install -y \
         apt-get clean
 
 #setup ssh
-RUN mkdir /var/run/sshd && \
-    echo 'root:root_pwd' |chpasswd && \
-        sed -ri 's/^#?PermitRootLogin\s+.*/PermitRootLogin yes/' \
-            /etc/ssh/sshd_config && \
-                sed -ri 's/UsePAM yes/#UsePAM yes/g' /etc/ssh/sshd_config && \
+RUN mkdir /var/run/sshd
+RUN echo 'root:root_pwd' |chpasswd
+RUN sed -ri 's/^#?PermitRootLogin\s+.*/PermitRootLogin yes/' \
+    /etc/ssh/sshd_config && \
+    sed -ri 's/UsePAM yes/#UsePAM yes/g' /etc/ssh/sshd_config && \
                     mkdir /root/.ssh
 
 #remove leftovers
@@ -50,8 +50,9 @@ EXPOSE 22 7777
 RUN julia -O3 -e 'using Pkg; Pkg.add("CSV"); using CSV'
 RUN julia -O3 -e 'using Pkg; Pkg.add("Distributions"); using Distributions'
 RUN julia -O3 -e 'using Pkg; Pkg.add("Plots"); using Plots'
-RUN julia -03 -e 'using Pkg; Pkg.add("JuliaInterpreter"); using JuliaInterpreter'
-RUN julia -O3 -e 'using Pkg; Pkg.REPLMode.pkgstr("add https://github.com/JuliaComputing/MKL.jl")'
+RUN julia -O3 -e 'using Pkg; Pkg.add("JuliaInterpreter"); using JuliaInterpreter'
+RUN julia -O3 -e 'using Pkg; Pkg.add("Infiltrator"); using Infiltrator'
+#RUN julia -O3 -e 'using Pkg; Pkg.REPLMode.pkgstr("add https://github.com/JuliaComputing/MKL.jl")'
 
 ########################################################
 COPY startup.sh / 
