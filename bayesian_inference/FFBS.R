@@ -63,28 +63,28 @@ library(dlm)
 simulate_y <- function(n, psiy, psi1, psi2, psi3){
   
   # model
-  FF <- matrix(c(1, 0, 1,rep(0,10)), nrow=1)
-  GG <- matrix(0, 13, 13)
+  FF <- matrix(c(1, 0, 1,rep(0,2)), nrow=1)
+  GG <- matrix(0, 5, 5)
   GG[1,1] <- 1
   GG[2,2] <- 1
   GG[1,2] <- 1
-  GG[3, 3:13] <- -1
-  GG[4:13, 3:12] <- diag(10)
+  GG[3, 3:5] <- -1
+  GG[4:5, 3:4] <- diag(2)
 
   V <- matrix(1/psiy)
-  W <- diag(c(1/psi1, 1/psi2, 1/psi3, rep(0,10)))
+  W <- diag(c(1/psi1, 1/psi2, 1/psi3, rep(0,2)))
   
-  seas <-  3*sin(seq(-1,1, length.out=12))[-12]
-  theta0 <-  matrix(c(4,0.1, seas))
+  seas <-  4*sin(seq(-1,1, length.out=4))[-4]
+  theta0 <-  matrix(c(4, 0.1, seas))
   
   # simulate
-  y <- vector("numeric", 144)
+  y <- vector("numeric", n)
   
   theta <-  theta0
   tmp <- La.svd(W)
-  sqrtW <- diag(sqrt(tmp$d)) %*% tmp$vt
+  sqrtW <- tmp$u %*% diag(sqrt(tmp$d)) 
   tmp <- La.svd(V)
-  sqrtV <- sqrt(tmp$d) %*% tmp$vt
+  sqrtV <- tmp$u %*% sqrt(tmp$d)
   
   for (i in 1:n){
     theta <- GG%*%theta+sqrtW%*%rnorm(dim(sqrtW)[1])
@@ -94,6 +94,28 @@ simulate_y <- function(n, psiy, psi1, psi2, psi3){
   return(y)
   
 }
+
+psi1 <- 3
+psi2 <- 0.5
+psi3 <- 0.0025
+psi4 <- 100
+y <- simulate_y(n=250, psiy=200, psi1=10, psi2=2e5, psi3=3e5)
+plot.ts(y)
+
+# W <- diag(c(1/psi1, 1/psi2, 1/psi3, 1/psi4 ))
+# tmp <- La.svd(W)
+# sqrtW <- tmp$u%*%diag(sqrt(tmp$d))
+# L <- chol(W)
+# 
+# n <- 1000000
+# x <- matrix(0, nrow = 4, ncol=n)
+# k <- dim(W)[1]
+# x <- matrix(rnorm(n*k), nrow=n, ncol=k) %*% L
+# y <- matrix(rnorm(n*k), nrow=n, ncol=k) %*% t(sqrtW)
+# 
+# cov(x)
+# cov(y)
+
 
 
 # Example 2
@@ -116,12 +138,11 @@ ffbs <- function(y, mc) {
   psi2 <- 1
   psi3 <- 1
   V <- 1 / psiy
-  W <- diag(rep(0, 13))
+  W <- diag(rep(0, 5))
   diag(W)[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
-  mod_level <- dlmModPoly(order = 2) + dlmModSeas(frequency = 12)
+  mod_level <- dlmModPoly(order = 2) + dlmModSeas(frequency = 4)
   V(mod_level) <- V
   W(mod_level) <- W
-  
   
   
   psiy_save <- numeric(mc)
@@ -172,19 +193,21 @@ ffbs <- function(y, mc) {
     
     
   }
-  return(list(psiy_save, psi1_save, psi2_save, psi3_save))
+  return(list(psiy_save, psi1_save, psi2_save, psi3_save, theta_save))
 }
 
 
-
-
-y <- simulate_y(n=250, psiy=200, psi1=10, psi2=1e5, psi3=1e4)
+y <- simulate_y(n=1000, psiy=200, psi1=10, psi2=2e5, psi3=3e5)
 plot.ts(y)
 
 now <- Sys.time()
 resu <- ffbs(y, 30000)
 Sys.time()-now
-
+psiy_save <- resu[[1]]
+psi1_save <- resu[[2]]
+psi2_save <- resu[[3]]
+psi3_save <- resu[[4]]
+theta_save <- resu[[5]]
 
 plot.ts(cumsum(psiy_save)/1:mc)
 plot.ts(cumsum(psi1_save)/1:mc)
