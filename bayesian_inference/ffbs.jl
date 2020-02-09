@@ -28,16 +28,10 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
     store_m = zeros(q2, T+1);
     store_D_plus = zeros(q2, q2, T+1);
     store_U_plus = zeros(q2, q2, T+1);
-    #store_D = zeros(q2, q2, T);
-    #store_U = zeros(q2, q2, T);
     store_theta = zeros(q2, T+1)
 
     m = m0;
     C = C0;
-    #xm = m0;
-    #xC = C0;
-    # predict
-    a = G*m
 
     tmp = svd(C);
     U_plus = Matrix(tmp.Vt);
@@ -58,8 +52,6 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
     Dw_inv[findall(x -> x == Inf, Dw_inv)] .= 0
     sqrtWinv = Diagonal(Dw_inv) * tmp.Vt
 
-    #store_xm[:,1] = m;
-    #store_a[:,1] = a;
     store_m[:,1] = m;
     store_D_plus[:,:,1] = D_plus;
     store_U_plus[:,:,1] = U_plus;
@@ -74,18 +66,11 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
         D_inv = Diagonal(tmp.S .^-1)
         D_inv[findall(x -> x == Inf, D_inv)] .= 0
 
-        # one-step forecast
-        f = F * a
-
         # posterior
         tmp = svd(Matrix([sqrtVinv*F*U; D_inv]));
         U_plus = U*tmp.Vt';   #U*V_star;
         D_plus = Diagonal(tmp.S .^-1);
         D_plus[findall(x -> x == Inf, D_plus)] .= 0;
-        #V_star = tmp.Vt;
-        #D_star = Diagonal(tmp.S);
-        #D_star_inv = Diagonal(tmp.S .^-1);
-        #D_star_inv[findall(x -> x == Inf, D_star_inv)] .= 0
 
         # compute gain K
         K = U_plus*(D_plus*(D_plus*(U_plus'*(F'*(sqrtVinv'*sqrtVinv)))));
@@ -93,23 +78,10 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
         # update estimate
         m = a + K*(Y[t:t]-F*a);
 
-        # pred state
-        #xa = G*xm
-        #xR = G*xC*G' + W
-        #xK = xR*F'*inv(F*xR*F'+V)
-        #xm = xa + xR*F'*inv(F*xR*F'+V)*(Y[t:t,]-F*xa)
-        #xC = xR-xR*F'*inv(F*xR*F'+V)*F*xR
-
-
-        #store_xa[:,t] = xa;
-        #store_xm[:,t+1] = xm;
-
         store_a[:,t] = a;
         store_m[:,t+1] = m;
         store_D_plus[:,:,t+1] = D_plus;
         store_U_plus[:,:,t+1] = U_plus;
-        #store_D[:,:,t] = D;
-        #store_U[:,:,t] = U;
     end
 
 
@@ -117,17 +89,13 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
     D_plus = store_D_plus[:,:,T+1];
     U_plus = store_U_plus[:,:,T+1];
 
-    #@infiltrate
     theta = m + U_plus*(D_plus*randn(q2))
     store_theta[:,T+1] = theta;
 
-    #@infiltrate
-    tmp = svd(W); #tmp <- La.svd(mod$W,nu=0)
-    Dw = tmp.S .^0.5; #Dw <- sqrt(tmp$d)
-    Dw = max.(Dw, epss); #Dw <- pmax(Dw, eps)
-    #sqrtW = Diagonal(Dw); #Dw.inv <- 1/Dw
+    tmp = svd(W);
+    Dw = tmp.S .^0.5;
+    Dw = max.(Dw, epss);
     sqrtWinv = Diagonal(1 ./ Dw) * tmp.Vt;
-    #sqrtWinv <- Dw.inv * tmp$vt # t()%*%() = W^(-1)
 
     for t in collect(T:-1:1)
 
@@ -135,30 +103,22 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
         m = store_m[:,t];
         D_plus = store_D_plus[:,:,t];
         U_plus = store_U_plus[:,:,t];
-        #D = Diagonal(store_D[:,:,t]);
-        #U = store_U[:,:,t];
 
-        #@infiltrate
-        D_plus_inv = D_plus ^-1; #D.inv <- 1/mod$D.C[i,];
-        D_plus_inv[findall(x -> x == Inf, D_plus_inv)] .= 0; #D.inv[abs(D.inv)==Inf] <- 0
-        #D_plus_inv = Diagonal(D_plus_inv);
+        D_plus_inv = D_plus ^-1;
+        D_plus_inv[findall(x -> x == Inf, D_plus_inv)] .= 0;
 
-        #La.svd(rbind(sqrtWinv %*% mod$GG %*% mod$U.C[[i]],diag(x=D.inv,nrow=length(D.inv))), nu=0)
         tmp = svd(Matrix([sqrtWinv*G*U_plus; D_plus_inv]));
-        #@infiltrate
-        U_sq = U_plus*tmp.Vt'; #U.H <- mod$U.C[[i]] %*% t(tmp$vt)
-        D_sq = 1 ./tmp.S; #1/tmp$d; D.H[abs(D.H)==Inf] <- 0
+        U_sq = U_plus*tmp.Vt';
+        D_sq = 1 ./tmp.S;
         D_sq[findall(a-> a == Inf, D_sq)] .= 0;
         D_sq = Diagonal(D_sq);
 
-        #@infiltrate
         h = m + U_sq*D_sq*D_sq*U_sq'*G'*sqrtWinv'*sqrtWinv*(theta-a)
         theta = h + U_sq*(D_sq*randn(q2))
 
         store_theta[:,t] = theta
     end
 
-    #return store_m', store_xm'
     return store_theta'
 end
 
@@ -166,21 +126,11 @@ end
 function simulate(n, mod, freq, psiy, psi1, psi2, psi3)
 
     G, F, W, V = mod()
-    # model
-    # F = [1 0 1 zeros(1, 2)];
-    # G = zeros(5, 5);
-    # G[1, 1] = 1;
-    # G[1, 2] = 1;
-    # G[2, 2] = 1;
-    # G[3, 3:end] = -1*ones(3);
-    # G[4:5, 3:4] = 1.0I(2);
 
     V[1,1] = 1 ./psiy;
-    # W = zeros(5,5);
     W[1,1] = 1.0 / psi1;
     W[2,2] = 1.0 / psi2;
     W[3,3] = 1.0 / psi3;
-
 
     seas =  3*sin.(collect(range(-1, 1, length=freq)))
     theta0 =  [4 ; 0.1; seas[1:end-1]]
@@ -240,11 +190,26 @@ function local_trend_seasonal4()
     return G, F, W, V
 end
 
-# Example 1: Simulated Local Linear Trend Model with Seasonality
-y = simulate(250, local_trend_seasonal12, 12, 10, 50, 5e5, 1e5)
-plot(y)
+# ACF
+function acf(y::AbstractArray{Float64,1}, k::Int64)
+    rho_0 = var(y)
+    acf = zeros(k)
 
+    for i in 1:k
+        acf[i] = cov(y[1:end-i],y[i+1:end])
+    end
 
+    return acf ./ rho_0
+end
+
+# Effective Sample Size
+function effective_sample_size(x)
+    rho = acf(x, size(x, 1)-2)
+    n = size(x, 1)
+    ess = n / (1+2*sum(rho))
+
+    return ess
+end
 
 function ret_hyper(x, y)
     # alpha
@@ -260,17 +225,21 @@ function ret_hyper(x, y)
     return ret_alpha(x, y), ret_beta(x, y)
 end
 
-ret_hyper(50, 1e5)
+# Example 1: Simulated Local Linear Trend Model with Seasonality
+y = simulate(250, local_trend_seasonal12, 12, 1, 5, 5e2, 1e5)
+plot(y)
 
-prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
-prior_rate = [1e-4, 5e-4, 0.5, 0.1];
-psi_init = [1, 100, 0.1, 0.2];
-nsim = 100000;
+ret_hyper(5e2, 1e5)
+
+prior_shape = [1e-5, 2.5e-4, 2.5, 1e4];
+prior_rate = [1e-5, 5e-5, 0.005, 0.1];
+psi_init = [100, 100, 100, 100];
+nsim = 5000;
 Random.seed!(10);
-@time gibbs_sampler_2(y, 10, psi_init, prior_shape, prior_rate);
+
 @time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
 
-
+# MCMC Diagnostics
 rho = acf(psi_y, 1000)
 scatter(collect(1:size(rho, 1)), rho)
 
@@ -286,13 +255,13 @@ effective_sample_size(psi_3)
 
 
 #psiy_hat =
-mean(psi_y[5001:end])
+mean(psi_y[50001:end])
 #psi1_hat =
-mean(psi_1[5001:end])
+mean(psi_1[50001:end])
 #psi2_hat =
 mean(psi_2[5001:end])
 #psi3_hat =
-mean(psi_3[5001:end])
+mean(psi_3[50001:end])
 
 function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
     T = size(y, 1);
@@ -369,6 +338,11 @@ function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
         psi3 = rand(Gamma(new_a_psi3, 1/new_b_psi3));
         W[3, 3] = 1/psi3
 
+        if rem(i, N/10) == 0.0
+            comp_perc = i/N*100
+            println(string("completion: ", comp_perc, "%"))
+        end
+
         store_psi_y[i] = psiy;
         store_psi_1[i] =  psi1;
         store_psi_2[i] =  psi2;
@@ -390,8 +364,41 @@ end
 data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
 y = map(x->parse(Float64,x), data_raw[2:end, 2]);
 y = broadcast(log, y);
-plot(y);
+plot(y)
 
+ret_hyper(50, 1e5)
+
+prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
+prior_rate = [1e-4, 5e-4, 0.5, 0.1];
+psi_init = [17, 63, 0.189, 0.71];
+nsim = 10000;
+Random.seed!(10);
+
+psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
+
+# MCMC Diagnostics
+rho = acf(psi_y, 1000)
+scatter(collect(1:size(rho, 1)), rho)
+
+plot(cumsum(psi_y) ./ collect(1.0:nsim))
+plot(cumsum(psi_1) ./ collect(1.0:nsim))
+plot(cumsum(psi_2) ./ collect(1.0:nsim))
+plot(cumsum(psi_3) ./ collect(1.0:nsim))
+
+effective_sample_size(psi_y)
+effective_sample_size(psi_1)
+effective_sample_size(psi_2)
+effective_sample_size(psi_3)
+
+
+#psiy_hat =
+mean(psi_y[5001:end])
+#psi1_hat =
+mean(psi_1[5001:end])
+#psi2_hat =
+mean(psi_2[5001:end])
+#psi3_hat =
+mean(psi_3[5001:end])
 
 
 function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
@@ -521,26 +528,7 @@ median(SS_theta1[101:end])
 
 
 
-# ACF
-function acf(y::AbstractArray{Float64,1}, k::Int64)
-    rho_0 = var(y)
-    acf = zeros(k)
 
-    for i in 1:k
-        acf[i] = cov(y[1:end-i],y[i+1:end])
-    end
-
-    return acf ./ rho_0
-end
-
-# Effective Sample Size
-function effective_sample_size(x)
-    rho = acf(x, size(x, 1)-2)
-    n = size(x, 1)
-    ess = n / (1+2*sum(rho))
-
-    return ess
-end
 
 effective_sample_size(store_psi_y)
 effective_sample_size(store_psi_1)
