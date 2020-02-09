@@ -55,7 +55,7 @@ function gibbs_sampler(y::AbstractArray{Float64, 2}, nsim::Int64, burnin::Int64)
     S01 = 1.0I(nn)
 
     # Omega_22
-    DD = 5. * sparse(1.0I,qq,qq)::SparseMatrixCSC{Float64,Int64};
+    DD = 5. * sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
     DD_inv = 1.0/5 * sparse(1.0I,qq,qq)::SparseMatrixCSC{Float64,Int64};
     nu02 = 6. * ones(qq);
     S02 = 0.01 * ones(qq);

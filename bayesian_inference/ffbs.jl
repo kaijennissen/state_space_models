@@ -7,7 +7,6 @@ using LinearAlgebra
 using CSV
 using Plots
 using Statistics
-#using StaticArrays
 using Distributions
 using Random
 using Infiltrator
@@ -16,6 +15,7 @@ using BenchmarkTools
 
 add_dim(x::Array) = reshape(x, (size(x)...,1))
 
+# Forward-Backward-Algorithm
 function svd_forward_backward(Y, G, F, W, V, C0, m0)
     epss = eps(Float64)^0.4
     T = size(Y, 1);
@@ -163,25 +163,27 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
 end
 
 # Simulate
-function simulate(n, psiy, psi1, psi2, psi3)
+function simulate(n, mod, freq, psiy, psi1, psi2, psi3)
 
+    G, F, W, V = mod()
     # model
-    F = [1 0 1 zeros(1, 2)];
-    G = zeros(5, 5);
-    G[1, 1] = 1;
-    G[1, 2] = 1;
-    G[2, 2] = 1;
-    G[3, 3:end] = -1*ones(3);
-    G[4:5, 3:4] = 1.0I(2);
+    # F = [1 0 1 zeros(1, 2)];
+    # G = zeros(5, 5);
+    # G[1, 1] = 1;
+    # G[1, 2] = 1;
+    # G[2, 2] = 1;
+    # G[3, 3:end] = -1*ones(3);
+    # G[4:5, 3:4] = 1.0I(2);
 
-    V = 1 ./psiy *ones(1, 1);
-    W = zeros(5,5);
+    V[1,1] = 1 ./psiy;
+    # W = zeros(5,5);
     W[1,1] = 1.0 / psi1;
     W[2,2] = 1.0 / psi2;
     W[3,3] = 1.0 / psi3;
 
-    seas =  3*sin.([-0.75; -0.25; 0.25; 0.75])
-    theta0 =  [4;0.1; seas[1:3]]
+
+    seas =  3*sin.(collect(range(-1, 1, length=freq)))
+    theta0 =  [4 ; 0.1; seas[1:end-1]]
 
     # simulate
     y = zeros(n)
@@ -198,14 +200,6 @@ function simulate(n, psiy, psi1, psi2, psi3)
     end
     return y
 end
-
-
-# Example 2: AirPassengers
-# Local Linear Trend + Seasonality with unknown Variance
-data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
-y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-y = broadcast(log, y);
-plot(y);
 
 function local_trend_seasonal12()
     q = 13
@@ -246,6 +240,60 @@ function local_trend_seasonal4()
     return G, F, W, V
 end
 
+# Example 1: Simulated Local Linear Trend Model with Seasonality
+y = simulate(250, local_trend_seasonal12, 12, 10, 50, 5e5, 1e5)
+plot(y)
+
+
+
+function ret_hyper(x, y)
+    # alpha
+    function ret_alpha(x, y)
+         return x^2/y
+    end
+
+    # beta
+    function ret_beta(x, y)
+         return x/y
+    end
+
+    return ret_alpha(x, y), ret_beta(x, y)
+end
+
+ret_hyper(50, 1e5)
+
+prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
+prior_rate = [1e-4, 5e-4, 0.5, 0.1];
+psi_init = [1, 100, 0.1, 0.2];
+nsim = 100000;
+Random.seed!(10);
+@time gibbs_sampler_2(y, 10, psi_init, prior_shape, prior_rate);
+@time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
+
+
+rho = acf(psi_y, 1000)
+scatter(collect(1:size(rho, 1)), rho)
+
+plot(cumsum(psi_y) ./ collect(1.0:nsim))
+plot(cumsum(psi_1) ./ collect(1.0:nsim))
+plot(cumsum(psi_2) ./ collect(1.0:nsim))
+plot(cumsum(psi_3) ./ collect(1.0:nsim))
+
+effective_sample_size(psi_y)
+effective_sample_size(psi_1)
+effective_sample_size(psi_2)
+effective_sample_size(psi_3)
+
+
+#psiy_hat =
+mean(psi_y[5001:end])
+#psi1_hat =
+mean(psi_1[5001:end])
+#psi2_hat =
+mean(psi_2[5001:end])
+#psi3_hat =
+mean(psi_3[5001:end])
+
 function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
     T = size(y, 1);
     N = nsim;
@@ -254,7 +302,7 @@ function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
     # model matrices
     # y_t = F_t * theta_t + v_t   v_t ~ N(0, V_t)
     # theta_t = G_t * theta_t-1 + w_t   v_t ~ N(0, W_t)
-    G, F, W, V = local_trend_seasonal4()
+    G, F, W, V = local_trend_seasonal12()
 
     q = size(W, 1)
     m0 = zeros(q, 1);
@@ -331,57 +379,109 @@ function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
 end
 
 
-y = simulate(250, 1, 1, 5e5, 1e5)
-plot(y)
-@time gibbs_sampler_2(y, 10, [1, 1, 5e5, 1e5]);
 
 
-# alpha
-function ret_alpha(x, y)
-     return x^2/y
+
+
+
+
+# Example 2: AirPassengers
+# Local Linear Trend + Seasonality with unknown Variance
+data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
+y = map(x->parse(Float64,x), data_raw[2:end, 2]);
+y = broadcast(log, y);
+plot(y);
+
+
+
+function gibbs_sampler_2(y, nsim, init_psi, prior_shape, prior_rate)
+    T = size(y, 1);
+    N = nsim;
+    Y = add_dim(y);
+
+    # model matrices
+    # y_t = F_t * theta_t + v_t   v_t ~ N(0, V_t)
+    # theta_t = G_t * theta_t-1 + w_t   v_t ~ N(0, W_t)
+    G, F, W, V = local_trend_seasonal12()
+
+    q = size(W, 1)
+    m0 = zeros(q, 1);
+    C0 = 1e7I(q);
+    theta = zeros(T+1, q)
+
+    # prior hyperparameters
+    # psi E(psi_x) = , Var(psi_y)=
+    a_psiy = prior_shape[1];
+    b_psiy = prior_rate[1];
+
+    a_psi1 = prior_shape[2];
+    b_psi1 = prior_rate[2];
+    a_psi2 = prior_shape[3];
+    b_psi2 = prior_rate[3];
+    a_psi3 = prior_shape[4];
+    b_psi3 = prior_rate[4];
+
+    psiy = init_psi[1];
+    psi1 = init_psi[2];
+    psi2 = init_psi[3];
+    psi3 = init_psi[4];
+
+    new_a_psiy = a_psiy + T/2;
+    new_a_psi1 = a_psi1 + T/2;
+    new_a_psi2 = a_psi2 + T/2;
+    new_a_psi3 = a_psi3 + T/2;
+
+    store_psi_y = zeros(N);
+    store_psi_1 = zeros(N);
+    store_psi_2 = zeros(N);
+    store_psi_3 = zeros(N);
+    store_theta = zeros(T+1, q, N)
+
+    for i in 1:N
+        # FFBS
+        theta = svd_forward_backward(Y, G, F, W, V, C0, m0);
+
+        # draw phi_y
+        ytheta = Y-theta[2:end,:]*F'
+        SS_y = (ytheta'*ytheta)[1];
+        new_b_psiy = b_psiy + 0.5 * SS_y;
+        psiy = rand(Gamma(new_a_psiy, 1/new_b_psiy));
+        V[1, 1] = 1/psiy;
+
+        # SS_theta
+        Δtheta = theta[2:end,:]-theta[1:end-1,:]*G';
+
+        # draw psi_1
+        SS_theta1 = Δtheta[:,1]'*Δtheta[:,1];
+        new_b_psi1 = b_psi1 + 0.5 * SS_theta1[1];
+        psi1 = rand(Gamma(new_a_psi1, 1/new_b_psi1));
+        W[1, 1] = 1/psi1
+
+        # draw psi_2
+        SS_theta2 = Δtheta[:,2]'*Δtheta[:,2];
+        new_b_psi2 = b_psi2 + 0.5 * SS_theta2[1];
+        psi2 = rand(Gamma(new_a_psi2, 1/new_b_psi2));
+        W[2, 2] = 1/psi2;
+
+        # draw psi_3
+        SS_theta3 = Δtheta[:,3]'*Δtheta[:,3];
+        new_b_psi3 = b_psi3 + 0.5 * SS_theta3[1];
+        psi3 = rand(Gamma(new_a_psi3, 1/new_b_psi3));
+        W[3, 3] = 1/psi3
+
+        store_psi_y[i] = psiy;
+        store_psi_1[i] =  psi1;
+        store_psi_2[i] =  psi2;
+        store_psi_3[i] =  psi3;
+        store_theta[:,:,i] = theta;
+    end
+    return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
 
-# beta
-function ret_beta(x, y)
-     return x/y
-end
-function ret_hyper(x, y)
-    return ret_alpha(x, y), ret_beta(x, y)
-end
-
-ret_hyper(1, 1e4)
-
-prior_shape = [1e-4, 1e-5, 2.5e6, 1e5];
-prior_rate = [1e-4, 1e-5, 5.0, 1.0];
-psi_init = [1, 1, 5e5, 1e5];
-nsim = 10000;
-Random.seed!(10);
-@time gibbs_sampler_2(y, 10, psi_init, prior_shape, prior_rate);
-@time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
 
 
-rho = acf(psi_y, 1000)
-scatter(collect(1:size(rho, 1)), rho)
-
-plot(cumsum(psi_y) ./ collect(1.0:nsim))
-plot(cumsum(psi_1) ./ collect(1.0:nsim))
-plot(cumsum(psi_2) ./ collect(1.0:nsim))
-plot(cumsum(psi_3) ./ collect(1.0:nsim))
-
-effective_sample_size(psi_y)
-effective_sample_size(psi_1)
-effective_sample_size(psi_2)
-effective_sample_size(psi_3)
 
 
-#psiy_hat =
-mean(psi_y[5001:end])
-#psi1_hat =
-mean(psi_1[5001:end])
-#psi2_hat =
-mean(psi_2[5001:end])
-#psi3_hat =
-mean(psi_3[5001:end])
 
 theta_hat = mean(store_theta[:,:,5001:end], dims=3);
 theta_max = maximum(store_theta[:,:,5001:end], dims=3);
