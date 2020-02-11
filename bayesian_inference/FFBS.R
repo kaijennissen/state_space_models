@@ -133,10 +133,10 @@ ffbs <- function(y, mc) {
   b_psi3 <- 0.0001
   
   set.seed(123)
-  psiy <- 1
-  psi1 <- 1
-  psi2 <- 1
-  psi3 <- 1
+  psiy <- 200#abs(rnorm(1))
+  psi1 <- 10#abs(rnorm(1))
+  psi2 <- 2e5#abs(rnorm(1))
+  psi3 <- 3e5#abs(rnorm(1))
   V <- 1 / psiy
   W <- diag(rep(0, 5))
   diag(W)[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
@@ -167,7 +167,7 @@ ffbs <- function(y, mc) {
     
     ## draw observation precision psiy
     rate <- by + crossprod(y - theta[-1, ] %*% t(FF)) / 2
-    psiy <- rgamma(1, shape = sh1, rate = rate)
+    psiy <- rgamma(1, shape = shy, rate = rate)
     
     SS_theta <- diag(crossprod(theta[-1, ] - theta[-n, ] %*% t(GG)))
     ## draw system precision psi2
@@ -197,11 +197,14 @@ ffbs <- function(y, mc) {
 }
 
 
-y <- simulate_y(n=1000, psiy=200, psi1=10, psi2=2e5, psi3=3e5)
+# simulate
+y <- simulate_y(n=250, psiy=20, psi1=10, psi2=2e5, psi3=3e5)
 plot.ts(y)
 
+# MCMC estimation
+mc <- 10000
 now <- Sys.time()
-resu <- ffbs(y, 30000)
+resu <- ffbs(y, mc)
 Sys.time()-now
 psiy_save <- resu[[1]]
 psi1_save <- resu[[2]]
@@ -213,6 +216,27 @@ plot.ts(cumsum(psiy_save)/1:mc)
 plot.ts(cumsum(psi1_save)/1:mc)
 plot.ts(cumsum(psi2_save)/1:mc)
 plot.ts(cumsum(psi3_save)/1:mc)
+mean(psiy_save[-(1:1000)])
+mean(psi1_save[-(1:1000)])
+mean(psi2_save[-(1:1000)])
+mean(psi3_save[-(1:1000)])
+
+# ML estimation
+mod_build <- function(parm){
+  psiy <- parm[1]
+  psi1 <- parm[2]
+  psi2 <- parm[3]
+  psi1 <- parm[4]
+  mod_level <- dlmModPoly(order = 2) + dlmModSeas(frequency = 4)  
+  V <- 1 / psiy
+  diag(W)[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
+  
+  return(mod_level)  
+}
+
+MLE <- dlmMLE(y = y, parm = rnorm(4), build = mod_build, method = 'SANN')
+MLE$par
+
 
 # psiy_hat = 21881.95; 22814.31; 23091.88
 # psi1_hat = 2669.815; 2472.64; 2468.197
