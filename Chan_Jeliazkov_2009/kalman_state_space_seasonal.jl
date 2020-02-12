@@ -40,24 +40,20 @@ end
 y = simulate(250, local_trend_seasonal12, 12, 1, 5, 5e2, 1e5)
 plot(y)
 
-ret_hyper(1, 1e5)
+ret_hyper(1e5, 1e5)
 
 prior_shape = [1e-5, 2.5e-4, 2.5, 1e4, ];
 prior_rate = [1e-5, 5e-5, 0.005, 0.1];
 psi_init = [100, 100, 100, 100];
 nsim = 5000;
 Random.seed!(10);
-nsim=100
+nsim=1000
 @time store_eta, store_Omega11, store_Omega22 = gibbs_sampler(y, nsim)
 
 psi_y = store_Omega11
-psi_1 = store_Omega22[1,:]
-psi_2 = store_Omega22[2,:]
-psi_3 = store_Omega22[3,:]
 plot(cumsum(psi_y) ./ collect(1.0:nsim))
-plot(cumsum(psi_1) ./ collect(1.0:nsim))
-plot(cumsum(psi_2) ./ collect(1.0:nsim))
-plot(cumsum(psi_3) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega22[2,:]) ./ collect(1.0:nsim))
+
 
 
 function gibbs_sampler(y, nsim::Int64)
@@ -71,16 +67,16 @@ function gibbs_sampler(y, nsim::Int64)
 
     # priors #-----------------------------------------------------------------
     # Omega_11
-    a_y = 1e-3;
-    b_y = 1e-3;
+    a_y = 1e-5;
+    b_y = 1e-5;
 
     # Omega_22
     DD = 5. * sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
     DD_inv = 1.0/5 * sparse(1.0I,qq,qq)::SparseMatrixCSC{Float64,Int64};
     #psi_prior_shape = [2.5e-4, 2.5, 1e4ones(11,1)]
     #psi_prior_rate = [1e-5, 5e-5, 0.005, 1e2ones(11,1)];
-    a_psi = [2.5e-4; 2.5; 1e4ones(11)];
-    b_psi = [5e-5; 0.005; 1e2ones(11)];
+    a_psi = [2.5e-4; 2.5; 1e5; 1e-17ones(10)];
+    b_psi = [5e-5; 0.005; 1.0; 1e-9ones(10)];
 
     # initial values #---------------------------------------------------------
     new_a_y = a_y + TT/2;
@@ -103,7 +99,7 @@ function gibbs_sampler(y, nsim::Int64)
 
     # H
     H1 = sparse(1.0I, TTqq, TTqq)::SparseMatrixCSC{Float64,Int64};
-    H2 = [[zeros(qq, TTqq-qq); sparse(1.0I, TTqq-qq, TTqq-qq)] zeros(TTqq, qq)]::SparseMatrixCSC{Float64,Int64};
+    H2 = [[zeros(qq, TTqq-qq); kron(sparse(1.0I, TT-1, TT-1), F)] zeros(TTqq, qq)];
     H = (H1 - H2)::SparseMatrixCSC{Float64,Int64};
     HT = sparse_transpose(H)::SparseMatrixCSC{Float64,Int64};
 
