@@ -23,7 +23,7 @@ function local_level()
     return G, F, W, V
 end
 
-function local_trend_seasonal12(freq)
+function local_trend_seasonal12()
     q = 13
     F = [1 0 1 zeros(1, 10)];
     G = zeros(q, q);
@@ -94,4 +94,33 @@ function ret_hyper(x, y)
     end
 
     return ret_alpha(x, y), ret_beta(x, y)
+end
+
+# Simulate
+function simulate(n, mod, freq, psiy, psi1, psi2, psi3)
+
+    G, F, W, V = mod()
+
+    V[1,1] = 1 ./psiy;
+    W[1,1] = 1.0 / psi1;
+    W[2,2] = 1.0 / psi2;
+    W[3,3] = 1.0 / psi3;
+
+    seas =  3*sin.(collect(range(-1, 1, length=freq)))
+    theta0 =  [4 ; 0.1; seas[1:end-1]]
+
+    # simulate
+    y = zeros(n)
+
+    theta =  theta0
+    tmp = svd(W)
+    sqrtW = tmp.U *Diagonal(tmp.S .^0.5)
+    tmp = svd(V)
+    sqrtV = tmp.U *(tmp.S .^0.5)
+
+    for i in 1:n
+        theta = G*theta+sqrtW*randn(size(sqrtW, 1))
+        y[i] = (F*theta + sqrtV[]*randn(size(sqrtV, 1)))[]
+    end
+    return y
 end
