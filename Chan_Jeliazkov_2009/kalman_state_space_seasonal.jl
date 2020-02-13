@@ -37,24 +37,21 @@ end
 #     return X_SUR
 # end
 
-y = simulate(250, local_trend_seasonal12, 12, 1, 5, 5e2, 1e5)
+y = simulate(250, local_trend_seasonal12, 12, 10, 50, 5e5, 5e5)
 plot(y)
 
-ret_hyper(1e5, 1e5)
+ret_hyper(1e10, 1e5)
 
-prior_shape = [1e-5, 2.5e-4, 2.5, 1e4, ];
-prior_rate = [1e-5, 5e-5, 0.005, 0.1];
-psi_init = [100, 100, 100, 100];
-nsim = 5000;
-Random.seed!(10);
-nsim=1000
+nsim=5000
 @time store_eta, store_Omega11, store_Omega22 = gibbs_sampler(y, nsim)
 
-psi_y = store_Omega11
-plot(cumsum(psi_y) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega11) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega22[1,:]) ./ collect(1.0:nsim))
 plot(cumsum(store_Omega22[2,:]) ./ collect(1.0:nsim))
-
-
+plot(cumsum(store_Omega22[3,:]) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega22[4,:]) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega22[5,:]) ./ collect(1.0:nsim))
+plot(cumsum(store_Omega22[6,:]) ./ collect(1.0:nsim))
 
 function gibbs_sampler(y, nsim::Int64)
 
@@ -63,20 +60,21 @@ function gibbs_sampler(y, nsim::Int64)
     TT = size(Y, 1)::Int64;
     qq = 13;
     TTqq = TT*qq::Int64;
+    TTqq1 = (TT+1)*qq::Int64;
 
 
     # priors #-----------------------------------------------------------------
     # Omega_11
-    a_y = 1e-5;
-    b_y = 1e-5;
+    a_y = 1e-3;
+    b_y = 1e-4;
 
     # Omega_22
     DD = 5. * sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
     DD_inv = 1.0/5 * sparse(1.0I,qq,qq)::SparseMatrixCSC{Float64,Int64};
     #psi_prior_shape = [2.5e-4, 2.5, 1e4ones(11,1)]
     #psi_prior_rate = [1e-5, 5e-5, 0.005, 1e2ones(11,1)];
-    a_psi = [2.5e-4; 2.5; 1e5; 1e-17ones(10)];
-    b_psi = [5e-5; 0.005; 1.0; 1e-9ones(10)];
+    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e15ones(10)];
+    b_psi = [5e-4; 5.0; 5.0; 1e5ones(10)];
 
     # initial values #---------------------------------------------------------
     new_a_y = a_y + TT/2;
@@ -98,8 +96,8 @@ function gibbs_sampler(y, nsim::Int64)
     F[4:end, 3:end-1] = 1.0I(10);
 
     # H
-    H1 = sparse(1.0I, TTqq, TTqq)::SparseMatrixCSC{Float64,Int64};
-    H2 = [[zeros(qq, TTqq-qq); kron(sparse(1.0I, TT-1, TT-1), F)] zeros(TTqq, qq)];
+    H1 = sparse(1.0I, TTqq1, TTqq1)::SparseMatrixCSC{Float64,Int64};
+    H2 = [[zeros(qq, TTqq); kron(sparse(1.0I, TT, TT), F)] zeros(TTqq1, qq)];
     H = (H1 - H2)::SparseMatrixCSC{Float64,Int64};
     HT = sparse_transpose(H)::SparseMatrixCSC{Float64,Int64};
 
@@ -108,8 +106,8 @@ function gibbs_sampler(y, nsim::Int64)
     #Omega22 = Diagonal(psi);
     Omega22 = sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
     Omega22_inv = sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
-    S = blockdiag(DD, kron(sparse(1.0I,TT-1,TT-1), Omega22))::SparseMatrixCSC{Float64,Int64};
-    S_inv = blockdiag(DD_inv, kron(sparse(1.0I,TT-1,TT-1), Omega22_inv))::SparseMatrixCSC{Float64,Int64};
+    S = blockdiag(DD, kron(sparse(1.0I,TT,TT), Omega22))::SparseMatrixCSC{Float64,Int64};
+    S_inv = blockdiag(DD_inv, kron(sparse(1.0I,TT,TT-1), Omega22_inv))::SparseMatrixCSC{Float64,Int64};
 
     # G
     bigG = kron(sparse(1.0I, TT, TT), G);
@@ -140,7 +138,7 @@ function gibbs_sampler(y, nsim::Int64)
 
         # Omega11
         e1 = Y - bigG * eta;
-        new_b_y = b_y + (e1'*e1)[]/2;
+        new_b_y = b_y + (e1[2:end]'*e1[2:end])[]/2;
         #@infiltrate
         #Omega11 = rand(Gamma(new_nu01, 1/new_S01));
         Omega11_inv = rand(Gamma(new_a_y, 1/new_b_y));
