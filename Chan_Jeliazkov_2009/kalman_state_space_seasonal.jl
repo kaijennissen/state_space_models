@@ -11,6 +11,7 @@ using SparseArrays
 using Distributions
 using Random
 using Plots
+using Infiltrator
 
 include("../bayesian_inference/bayesian_utils.jl")
 # 1) TVP-VAR
@@ -37,12 +38,12 @@ end
 #     return X_SUR
 # end
 
-y = simulate(250, local_trend_seasonal12, 12, 10, 50, 5e5, 5e5)
+y = simulate(250, local_trend_seasonal12, 12, 10, 50, 5e5, 1e5)
 plot(y)
 
-ret_hyper(1e10, 1e5)
+ret_hyper(1e8, 1e3)
 
-nsim=5000
+nsim=10000
 @time store_eta, store_Omega11, store_Omega22 = gibbs_sampler(y, nsim)
 
 plot(cumsum(store_Omega11) ./ collect(1.0:nsim))
@@ -53,15 +54,16 @@ plot(cumsum(store_Omega22[4,:]) ./ collect(1.0:nsim))
 plot(cumsum(store_Omega22[5,:]) ./ collect(1.0:nsim))
 plot(cumsum(store_Omega22[6,:]) ./ collect(1.0:nsim))
 
+eta_hat = reshape(mean(store_eta, dims=2), 13, :)'
+plot(y)
+plot!(eta_hat[:,1])
+
 function gibbs_sampler(y, nsim::Int64)
 
     Y = add_dim(y);
-    tt = size(y, 1)::Int64;
-    TT = size(Y, 1)::Int64;
-    qq = 13;
-    TTqq = TT*qq::Int64;
-    TTqq1 = (TT+1)*qq::Int64;
-
+    T = size(Y, 1);
+    q = 13;
+    Tq = T*q;
 
     # priors #-----------------------------------------------------------------
     # Omega_11
@@ -69,16 +71,16 @@ function gibbs_sampler(y, nsim::Int64)
     b_y = 1e-4;
 
     # Omega_22
-    DD = 5. * sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
-    DD_inv = 1.0/5 * sparse(1.0I,qq,qq)::SparseMatrixCSC{Float64,Int64};
+    DD =  sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
+    DD_inv = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
     #psi_prior_shape = [2.5e-4, 2.5, 1e4ones(11,1)]
     #psi_prior_rate = [1e-5, 5e-5, 0.005, 1e2ones(11,1)];
-    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e15ones(10)];
-    b_psi = [5e-4; 5.0; 5.0; 1e5ones(10)];
+    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e13ones(10)];
+    b_psi = [5e-4; 5.0; 1.0; 1e5ones(10)];
 
     # initial values #---------------------------------------------------------
-    new_a_y = a_y + TT/2;
-    new_a_psi = a_psi .+ TT/2;
+    new_a_y = a_y + (T-1)/2;
+    new_a_psi = a_psi .+ (T-1)/2;
 
     # Omega11
     Omega11 = 1.0I(1);
@@ -88,7 +90,7 @@ function gibbs_sampler(y, nsim::Int64)
     G = [1 0 1 zeros(1, 10)];
 
     # F
-    F = zeros(qq, qq);
+    F = zeros(q, q);
     F[1, 1] = 1;
     F[1, 2] = 1;
     F[2, 2] = 1;
@@ -96,62 +98,57 @@ function gibbs_sampler(y, nsim::Int64)
     F[4:end, 3:end-1] = 1.0I(10);
 
     # H
-    H1 = sparse(1.0I, TTqq1, TTqq1)::SparseMatrixCSC{Float64,Int64};
-    H2 = [[zeros(qq, TTqq); kron(sparse(1.0I, TT, TT), F)] zeros(TTqq1, qq)];
+    H1 = sparse(1.0I, Tq, Tq)::SparseMatrixCSC{Float64,Int64};
+    H2 = [[zeros(q, Tq-q); kron(sparse(1.0I, T-1, T-1), F)] zeros(Tq, q)];
     H = (H1 - H2)::SparseMatrixCSC{Float64,Int64};
-    HT = sparse_transpose(H)::SparseMatrixCSC{Float64,Int64};
+    HT = sparse(H')::SparseMatrixCSC{Float64,Int64};
 
     # S
-    #psi = ones(qq);
-    #Omega22 = Diagonal(psi);
-    Omega22 = sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
-    Omega22_inv = sparse(1.0I, qq, qq)::SparseMatrixCSC{Float64,Int64};
-    S = blockdiag(DD, kron(sparse(1.0I,TT,TT), Omega22))::SparseMatrixCSC{Float64,Int64};
-    S_inv = blockdiag(DD_inv, kron(sparse(1.0I,TT,TT-1), Omega22_inv))::SparseMatrixCSC{Float64,Int64};
+    Omega22 = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
+    Omega22_inv = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
+    S = blockdiag(DD, kron(sparse(1.0I, T-1, T-1), Omega22))::SparseMatrixCSC{Float64,Int64};
+    S_inv = blockdiag(DD_inv, kron(sparse(1.0I, T-1, T-1), Omega22_inv))::SparseMatrixCSC{Float64,Int64};
 
     # G
-    bigG = kron(sparse(1.0I, TT, TT), G);
-    bigGT = sparse(bigG'); #sparse_transpose(bigG);
+    bigG = kron(sparse(1.0I, T, T), G);
+    bigGT = sparse(bigG');
 
     # initialize for storeage
-    store_eta = zeros(TTqq, nsim);
+    store_eta = zeros(Tq, nsim);
     store_Omega11 = zeros(nsim);
-    store_Omega22 = zeros(qq, nsim);
+    store_Omega22 = zeros(q, nsim);
 
     for isim in 1:nsim
 
         #S_inv = blockdiag(DD_inv, kron(sparse(I,TT-1,TT-1), Omega22_inv));
-        S_inv = kron(sparse(1.0I,TT,TT), Omega22_inv)::SparseMatrixCSC{Float64,Int64};
-        S_inv[1:qq,1:qq] = DD_inv::SparseMatrixCSC{Float64,Int64};
-        K = HT * S_inv * H::SparseMatrixCSC{Float64,Int64};
+        S_inv = kron(sparse(1.0I, T, T), Omega22_inv);
+        S_inv[1:q, 1:q] = DD_inv;
+        K = (HT * S_inv * H);
 
-        GGL = tril(bigGT * kron(sparse(1.0I, TT, TT), Omega11_inv) * bigG)::SparseMatrixCSC{Float64,Int64};
-        GT_Omega11_inv_G = (GGL + sparse(GGL') - Diagonal(GGL))#''::SparseMatrixCSC{Float64,Int64};
-        GT_Omega11_inv_Y = (bigGT * (kron(sparse(1.0I, TT, TT), Omega11_inv) * Y))::Array{Float64,2};
+        GGL = tril(bigGT * kron(sparse(1.0I, T, T), Omega11_inv) * bigG);
+        GT_Omega11_inv_G = GGL + sparse(GGL') - Diagonal(GGL);
+        GT_Omega11_inv_Y = bigGT * (kron(sparse(1.0I, T, T), Omega11_inv) * Y);
 
-        P = K + GT_Omega11_inv_G::SparseMatrixCSC{Float64,Int64};
+        P = K + GT_Omega11_inv_G;
 
-        C = cholesky(P, perm=1:TTqq);
-        L = sparse(C.L)::SparseMatrixCSC{Float64,Int64};
-        eta_hat = L'\(L\GT_Omega11_inv_Y)::Array{Float64,2};
-        eta = (eta_hat + L' \ rand(Normal(),TTqq))::Array{Float64,2};
+        C = cholesky(P, perm=1:Tq);
+        L = sparse(C.L);
+        eta_hat = L'\(L\GT_Omega11_inv_Y);
+        eta = (eta_hat + L' \ rand(Normal(), Tq));
 
         # Omega11
         e1 = Y - bigG * eta;
-        new_b_y = b_y + (e1[2:end]'*e1[2:end])[]/2;
-        #@infiltrate
-        #Omega11 = rand(Gamma(new_nu01, 1/new_S01));
+        new_b_y = b_y + (e1[2:end,:]'*e1[2:end,:])[]/2;
         Omega11_inv = rand(Gamma(new_a_y, 1/new_b_y));
         Omega11 = Omega11_inv ^-1;
 
         # Omega22
-        e2 = reshape(H * eta, qq, TT);
-        e2*e2'
-        new_b_psi = b_psi + diag(e2*e2')./2;
-        for i in 1:qq
-            Omega22_inv[i,i] = rand(Gamma(new_a_psi[i], 1/new_b_psi[i]));
+        e2 = reshape(H * eta, q, T);
+        new_b_psi = b_psi + diag(e2[:,2:end]*e2[:,2:end]')./2;
+        for i in 1:q
+            Omega22_inv[i, i] = rand(Gamma(new_a_psi[i], 1/new_b_psi[i]));
         end
-        Omega22 = Omega22\sparse(1.0I,qq,qq);
+        Omega22 = Omega22_inv\sparse(1.0I, q, q);
 
         # store
         store_eta[:, isim] = eta;
