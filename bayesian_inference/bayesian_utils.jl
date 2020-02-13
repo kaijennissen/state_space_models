@@ -23,6 +23,8 @@ function local_level()
     return G, F, W, V
 end
 
+add_dim(x::Array) = reshape(x, (size(x)...,1))
+
 function local_trend_seasonal12()
     q = 13
     F = [1 0 1 zeros(1, 10)];
