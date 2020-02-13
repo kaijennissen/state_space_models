@@ -10,7 +10,7 @@ build:
 
 run:
 	docker run --rm \
-		-it \
+		-itd \
 		-p 7772:22 \
 	    -v $(THIS_FILE_DIR):/opt/project \
 	    --name $(CONTAINER) \
