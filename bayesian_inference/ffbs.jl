@@ -133,7 +133,7 @@ end
 
 
 # Example 1: Simulated Local Linear Trend Model with Seasonality
-function gibbs_sampler_1(y, nsim, init_psi, prior_shape, prior_rate)
+function ffbs_gibbs_sampler(y, nsim, init_psi, prior_shape, prior_rate)
     T = size(y, 1);
     N = nsim;
     Y = add_dim(y);
