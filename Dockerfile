@@ -13,9 +13,7 @@ RUN apt-get update && \
     gdbserver \
     rsync \
     vim \
-    locales
-
-RUN apt-get install -y \
+    locales \
     bzip2 \
     wget \
     gnupg \
