@@ -75,8 +75,8 @@ function gibbs_sampler(y, nsim::Int64)
     DD_inv = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
     #psi_prior_shape = [2.5e-4, 2.5, 1e4ones(11,1)]
     #psi_prior_rate = [1e-5, 5e-5, 0.005, 1e2ones(11,1)];
-    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e13ones(10)];
-    b_psi = [5e-4; 5.0; 1.0; 1e5ones(10)];
+    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e21ones(10)];
+    b_psi = [5e-4; 5.0; 1.0; 1e8ones(10)];
 
     # initial values #---------------------------------------------------------
     new_a_y = a_y + (T-1)/2;
@@ -131,6 +131,7 @@ function gibbs_sampler(y, nsim::Int64)
 
         P = K + GT_Omega11_inv_G;
 
+        # sqrtP
         C = cholesky(P, perm=1:Tq);
         L = sparse(C.L);
         eta_hat = L'\(L\GT_Omega11_inv_Y);
