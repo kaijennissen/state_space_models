@@ -58,7 +58,7 @@ eta_hat = reshape(mean(store_eta, dims=2), 13, :)'
 plot(y)
 plot!(eta_hat[:,1])
 
-function gibbs_sampler(y, nsim::Int64)
+function gibbs_sampler(y, nsim, prior_shape, prior_rate)
 
     Y = add_dim(y);
     T = size(Y, 1);
@@ -66,25 +66,23 @@ function gibbs_sampler(y, nsim::Int64)
     Tq = T*q;
 
     # priors #-----------------------------------------------------------------
+
     # Omega_11
-    a_y = 1e-3;
-    b_y = 1e-4;
+    a_y = prior_shape[1];
+    b_y = prior_rate[1];
 
     # Omega_22
-    DD =  sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
-    DD_inv = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
-    #psi_prior_shape = [2.5e-4, 2.5, 1e4ones(11,1)]
-    #psi_prior_rate = [1e-5, 5e-5, 0.005, 1e2ones(11,1)];
-    a_psi = [2.5e-2; 2.5e6; 2.5e6; 1e21ones(10)];
-    b_psi = [5e-4; 5.0; 1.0; 1e8ones(10)];
+    DD_inv = sparse(1.0I, q, q);
+    a_psi = prior_shape[2:end];
+    b_psi = prior_rate[2:end];
 
-    # initial values #---------------------------------------------------------
     new_a_y = a_y + (T-1)/2;
     new_a_psi = a_psi .+ (T-1)/2;
 
+    # initial values #---------------------------------------------------------
+
     # Omega11
-    Omega11 = 1.0I(1);
-    Omega11_inv = inv(Omega11);
+    Omega11_inv = 1.0I(1);
 
     # G
     G = [1 0 1 zeros(1, 10)];
@@ -104,19 +102,17 @@ function gibbs_sampler(y, nsim::Int64)
     HT = sparse(H')::SparseMatrixCSC{Float64,Int64};
 
     # S
-    Omega22 = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
     Omega22_inv = sparse(1.0I, q, q)::SparseMatrixCSC{Float64,Int64};
-    S = blockdiag(DD, kron(sparse(1.0I, T-1, T-1), Omega22))::SparseMatrixCSC{Float64,Int64};
     S_inv = blockdiag(DD_inv, kron(sparse(1.0I, T-1, T-1), Omega22_inv))::SparseMatrixCSC{Float64,Int64};
 
     # G
     bigG = kron(sparse(1.0I, T, T), G);
     bigGT = sparse(bigG');
 
-    # initialize for storeage
+    # storeage
     store_eta = zeros(Tq, nsim);
-    store_Omega11 = zeros(nsim);
-    store_Omega22 = zeros(q, nsim);
+    store_Omega11_inv = zeros(nsim);
+    store_Omega22_inv = zeros(q, nsim);
 
     for isim in 1:nsim
 
@@ -131,7 +127,6 @@ function gibbs_sampler(y, nsim::Int64)
 
         P = K + GT_Omega11_inv_G;
 
-        # sqrtP
         C = cholesky(P, perm=1:Tq);
         L = sparse(C.L);
         eta_hat = L'\(L\GT_Omega11_inv_Y);
@@ -141,7 +136,7 @@ function gibbs_sampler(y, nsim::Int64)
         e1 = Y - bigG * eta;
         new_b_y = b_y + (e1[2:end,:]'*e1[2:end,:])[]/2;
         Omega11_inv = rand(Gamma(new_a_y, 1/new_b_y));
-        Omega11 = Omega11_inv ^-1;
+        #Omega11 = Omega11_inv ^-1;
 
         # Omega22
         e2 = reshape(H * eta, q, T);
@@ -149,18 +144,21 @@ function gibbs_sampler(y, nsim::Int64)
         for i in 1:q
             Omega22_inv[i, i] = rand(Gamma(new_a_psi[i], 1/new_b_psi[i]));
         end
-        Omega22 = Omega22_inv\sparse(1.0I, q, q);
+        #Omega22 = Omega22_inv\sparse(1.0I, q, q);
+
+        if rem(isim, nsim/10) == 0.0
+            comp_perc = isim/nsim*100
+            println(string("completion: ", comp_perc, "%"))
+        end
 
         # store
         store_eta[:, isim] = eta;
-        store_Omega11[isim] = Omega11_inv;
-        store_Omega22[:, isim] = diag(Omega22_inv);
+        store_Omega11_inv[isim] = Omega11_inv;
+        store_Omega22_inv[:, isim] = diag(Omega22_inv);
     end
 
-    return store_eta, store_Omega11, store_Omega22
+    return store_eta, store_Omega11_inv, store_Omega22_inv
 end
-
-
 
 
 # Kalman Filter
