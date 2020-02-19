@@ -52,7 +52,7 @@ RUN julia -O3 -e 'using Pkg; Pkg.add("JuliaInterpreter"); using JuliaInterpreter
 RUN julia -O3 -e 'using Pkg; Pkg.add("Infiltrator"); using Infiltrator'
 RUN julia -O3 -e 'using Pkg; Pkg.add("BenchmarkTools"); using BenchmarkTools'
 RUN julia -O3 -e 'using Pkg; Pkg.add("StaticArrays"); using StaticArrays'
-#RUN julia -O3 -e 'using Pkg; Pkg.add("Mamba"); using Mamba'
+RUN julia -O3 -e 'using Pkg; Pkg.add("Infiltrator"); using Infiltrator'
 RUN julia -O3 -e 'using Pkg; Pkg.REPLMode.pkgstr("add https://github.com/JuliaComputing/MKL.jl")'
 
 ########################################################
