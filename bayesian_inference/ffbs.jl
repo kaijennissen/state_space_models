@@ -19,9 +19,7 @@ using Plots
 using Statistics
 using Distributions
 using Random
-using Infiltrator
-using JuliaInterpreter
-using BenchmarkTools
+
 
 include("bayesian_utils.jl")
 add_dim(x::Array) = reshape(x, (size(x)...,1))
@@ -221,42 +219,42 @@ function ffbs_gibbs_sampler(y, nsim, init_psi, prior_shape, prior_rate)
     end
     return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
-
-y = simulate(250, local_trend_seasonal12, 12, 1, 5, 5e2, 1e5)
-plot(y)
-
-ret_hyper(5e2, 1e5)
-
-prior_shape = [1e-5, 2.5e-4, 2.5, 1e4];
-prior_rate = [1e-5, 5e-5, 0.005, 0.1];
-psi_init = [100, 100, 100, 100];
-nsim = 5000;
-Random.seed!(10);
-
-@time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
-
-# MCMC Diagnostics
-rho = acf(psi_y, 1000)
-scatter(collect(1:size(rho, 1)), rho)
-
-plot(cumsum(psi_y) ./ collect(1.0:nsim))
-plot(cumsum(psi_1) ./ collect(1.0:nsim))
-plot(cumsum(psi_2) ./ collect(1.0:nsim))
-plot(cumsum(psi_3) ./ collect(1.0:nsim))
-
-effective_sample_size(psi_y)
-effective_sample_size(psi_1)
-effective_sample_size(psi_2)
-effective_sample_size(psi_3)
-
-# psiy_hat
-mean(psi_y[50001:end])
-# psi1_hat
-mean(psi_1[50001:end])
-# psi2_hat
-mean(psi_2[5001:end])
-# psi3_hat
-mean(psi_3[50001:end])
+#
+# y = simulate(250, local_trend_seasonal12, 12, 1, 5, 5e2, 1e5)
+# plot(y)
+#
+# ret_hyper(5e2, 1e5)
+#
+# prior_shape = [1e-5, 2.5e-4, 2.5, 1e4];
+# prior_rate = [1e-5, 5e-5, 0.005, 0.1];
+# psi_init = [100, 100, 100, 100];
+# nsim = 5000;
+# Random.seed!(10);
+#
+# @time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
+#
+# # MCMC Diagnostics
+# rho = acf(psi_y, 1000)
+# scatter(collect(1:size(rho, 1)), rho)
+#
+# plot(cumsum(psi_y) ./ collect(1.0:nsim))
+# plot(cumsum(psi_1) ./ collect(1.0:nsim))
+# plot(cumsum(psi_2) ./ collect(1.0:nsim))
+# plot(cumsum(psi_3) ./ collect(1.0:nsim))
+#
+# effective_sample_size(psi_y)
+# effective_sample_size(psi_1)
+# effective_sample_size(psi_2)
+# effective_sample_size(psi_3)
+#
+# # psiy_hat
+# mean(psi_y[50001:end])
+# # psi1_hat
+# mean(psi_1[50001:end])
+# # psi2_hat
+# mean(psi_2[5001:end])
+# # psi3_hat
+# mean(psi_3[50001:end])
 
 
 # Example 2: Nile River
@@ -314,26 +312,26 @@ function gibbs_sampler_2(y, nsim, nburn)
     end
     return store_phi1, store_phi2, store_theta
 end
-
-data_raw = CSV.read("Nile.csv", header = 0);
-y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-plot(y)
-
-
-@time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20, 10);
-@time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20000, 10000);
-
-plot(cumsum(store_phi1)./collect(1:20000))
-plot(cumsum(store_phi2)./collect(1:20000))
-
-phi1_hat = mean(store_phi1);
-phi2_hat = mean(store_phi2);
-theta = reshape(store_theta, 100, 20000);
-theta_hat = mean(theta, dims=2)
-
-plot(y)
-plot!(theta_hat)
-
+# 
+# data_raw = CSV.read("Nile.csv", header = 0);
+# y = map(x->parse(Float64,x), data_raw[2:end, 2]);
+# plot(y)
+#
+#
+# @time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20, 10);
+# @time store_phi1, store_phi2, store_theta = gibbs_sampler(y, 20000, 10000);
+#
+# plot(cumsum(store_phi1)./collect(1:20000))
+# plot(cumsum(store_phi2)./collect(1:20000))
+#
+# phi1_hat = mean(store_phi1);
+# phi2_hat = mean(store_phi2);
+# theta = reshape(store_theta, 100, 20000);
+# theta_hat = mean(theta, dims=2)
+#
+# plot(y)
+# plot!(theta_hat)
+#
 
 
 # Example 3: AirPassengers
@@ -421,43 +419,43 @@ function gibbs_sampler_3(y, nsim, init_psi, prior_shape, prior_rate)
     end
     return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
-
-# Import data
-data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
-y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-y = broadcast(log, y);
-plot(y)
-
-ret_hyper(50, 1e5)
-
-prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
-prior_rate = [1e-4, 5e-4, 0.5, 0.1];
-psi_init = [17, 63, 0.189, 0.71];
-nsim = 10000;
-Random.seed!(10);
-
-psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
-
-# MCMC Diagnostics
-rho = acf(psi_y, 1000)
-scatter(collect(1:size(rho, 1)), rho)
-
-plot(cumsum(psi_y) ./ collect(1.0:nsim))
-plot(cumsum(psi_1) ./ collect(1.0:nsim))
-plot(cumsum(psi_2) ./ collect(1.0:nsim))
-plot(cumsum(psi_3) ./ collect(1.0:nsim))
-
-effective_sample_size(psi_y)
-effective_sample_size(psi_1)
-effective_sample_size(psi_2)
-effective_sample_size(psi_3)
-
-
-# psiy_hat
-mean(psi_y[5001:end])
-# psi1_hat
-mean(psi_1[5001:end])
-# psi2_hat
-mean(psi_2[5001:end])
-# psi3_hat
-mean(psi_3[5001:end])
+#
+# # Import data
+# data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
+# y = map(x->parse(Float64,x), data_raw[2:end, 2]);
+# y = broadcast(log, y);
+# plot(y)
+#
+# ret_hyper(50, 1e5)
+#
+# prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
+# prior_rate = [1e-4, 5e-4, 0.5, 0.1];
+# psi_init = [17, 63, 0.189, 0.71];
+# nsim = 10000;
+# Random.seed!(10);
+#
+# psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
+#
+# # MCMC Diagnostics
+# rho = acf(psi_y, 1000)
+# scatter(collect(1:size(rho, 1)), rho)
+#
+# plot(cumsum(psi_y) ./ collect(1.0:nsim))
+# plot(cumsum(psi_1) ./ collect(1.0:nsim))
+# plot(cumsum(psi_2) ./ collect(1.0:nsim))
+# plot(cumsum(psi_3) ./ collect(1.0:nsim))
+#
+# effective_sample_size(psi_y)
+# effective_sample_size(psi_1)
+# effective_sample_size(psi_2)
+# effective_sample_size(psi_3)
+#
+#
+# # psiy_hat
+# mean(psi_y[5001:end])
+# # psi1_hat
+# mean(psi_1[5001:end])
+# # psi2_hat
+# mean(psi_2[5001:end])
+# # psi3_hat
+# mean(psi_3[5001:end])

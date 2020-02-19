@@ -60,8 +60,8 @@ library(dlm)
 # theta_hat <- rowMeans(theta_save[-1, -(1:5000)])
 # plot.ts(cbind(c(Nile), theta_hat), plot.type = "single")
 
-simulate_y <- function(n, psiy, psi1, psi2, psi3){
-  
+simulate_y <- function(n, mod){
+
   # model
   FF <- matrix(c(1, 0, 1,rep(0,2)), nrow=1)
   GG <- matrix(0, 5, 5)
@@ -71,11 +71,19 @@ simulate_y <- function(n, psiy, psi1, psi2, psi3){
   GG[3, 3:5] <- -1
   GG[4:5, 3:4] <- diag(2)
 
-  V <- matrix(1/psiy)
-  W <- diag(c(1/psi1, 1/psi2, 1/psi3, rep(0,2)))
+  #V <- matrix(1/psiy)
+  #W <- diag(c(1/psi1, 1/psi2, 1/psi3, rep(0,2)))
   
-  seas <-  4*sin(seq(-1,1, length.out=4))[-4]
-  theta0 <-  matrix(c(4, 0.1, seas))
+  
+  V <- mod$V
+  W <- mod$W
+  
+  FF <- mod$FF
+  GG <- mod$GG
+  
+  #seas <-  4*sin(seq(-1,1, length.out=4))[-4]
+  L <- chol(mod$C0)
+  theta0 <-  mod$m0 + L%*% matrix(rnorm(dim(L)[1]))
   
   # simulate
   y <- vector("numeric", n)
@@ -87,20 +95,14 @@ simulate_y <- function(n, psiy, psi1, psi2, psi3){
   sqrtV <- tmp$u %*% sqrt(tmp$d)
   
   for (i in 1:n){
-    theta <- GG%*%theta+sqrtW%*%rnorm(dim(sqrtW)[1])
-    y[i] <- FF%*%theta + sqrtV%*%rnorm(dim(sqrtV)[1])
+    theta <- GG %*% theta+sqrtW %*% rnorm(dim(sqrtW)[1])
+    y[i] <- FF %*% theta + sqrtV %*% rnorm(dim(sqrtV)[1])
   }
   
   return(y)
   
 }
 
-psi1 <- 3
-psi2 <- 0.5
-psi3 <- 0.0025
-psi4 <- 100
-y <- simulate_y(n=250, psiy=200, psi1=10, psi2=2e5, psi3=3e5)
-plot.ts(y)
 
 # W <- diag(c(1/psi1, 1/psi2, 1/psi3, 1/psi4 ))
 # tmp <- La.svd(W)
@@ -117,26 +119,31 @@ plot.ts(y)
 # cov(y)
 
 
-
+gamma_prior <- function(a, b){
+  alpha <- a^2/b
+  beta <- a/b
+  
+  return(list(alpha, beta))
+}
 # Example 2
 #y <- log(c(AirPassengers))
 #plot.ts(y)
 ffbs <- function(y, mc) {
   n <- length(y)
-  ay <- 2
-  by <- 0.0001
-  a_psi1 <- 2
-  b_psi1 <- 0.0001
-  a_psi2 <- 2
-  b_psi2 <- 0.0001
-  a_psi3 <- 2
-  b_psi3 <- 0.0001
+  ay <- 1e-2
+  by <- 1e-3
+  a_psi1 <-2.5e-1
+  b_psi1 <- 5e-3
+  a_psi2 <- 2.5e7
+  b_psi2 <- 500
+  a_psi3 <- 2.5e7
+  b_psi3 <- 50
   
   set.seed(123)
-  psiy <- 200#abs(rnorm(1))
-  psi1 <- 10#abs(rnorm(1))
-  psi2 <- 2e5#abs(rnorm(1))
-  psi3 <- 3e5#abs(rnorm(1))
+  psiy <- 1
+  psi1 <- 50
+  psi2 <- 5e5
+  psi3 <- 5e5
   V <- 1 / psiy
   W <- diag(rep(0, 5))
   diag(W)[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
@@ -170,18 +177,18 @@ ffbs <- function(y, mc) {
     psiy <- rgamma(1, shape = shy, rate = rate)
     
     SS_theta <- diag(crossprod(theta[-1, ] - theta[-n, ] %*% t(GG)))
-    ## draw system precision psi2
+    # draw system precision psi2
     rate <- b_psi1 + SS_theta[1] / 2
     psi1 <- rgamma(1, shape = sh1, rate = rate)
-    
-    ## draw system precision psi2
+
+    # draw system precision psi2
     rate <- b_psi2 + SS_theta[2] / 2
     psi2 <- rgamma(1, shape = sh2, rate = rate)
-    
-    ## draw system precision psi2
+
+    # draw system precision psi2
     rate <- b_psi3 + SS_theta[3] / 2
     psi3 <- rgamma(1, shape = sh3, rate = rate)
-    
+
     ## update and save
     V(mod_level) <- 1 / psiy
     diag(W(mod_level))[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
@@ -191,6 +198,11 @@ ffbs <- function(y, mc) {
     psi2_save[it] <- psi2
     psi3_save[it] <- psi3
     
+    if (10*it %% mc == 0){
+      comp_perc = 100*it / mc
+      print (paste("completion: ", comp_perc))
+    }
+    
     
   }
   return(list(psiy_save, psi1_save, psi2_save, psi3_save, theta_save))
@@ -198,14 +210,16 @@ ffbs <- function(y, mc) {
 
 
 # simulate
-y <- simulate_y(n=250, psiy=20, psi1=10, psi2=2e5, psi3=3e5)
-plot.ts(y)
+#y <- simulate_y(n=250, psiy=10, psi1=50, psi2=5e5, psi3=5e5)
+#plot.ts(y)
+#write.csv(y, "simulation.csv")
 
 # MCMC estimation
-mc <- 10000
+mc <- 5000
 now <- Sys.time()
 resu <- ffbs(y, mc)
 Sys.time()-now
+
 psiy_save <- resu[[1]]
 psi1_save <- resu[[2]]
 psi2_save <- resu[[3]]
@@ -378,3 +392,167 @@ sqrtVinv <- Dv.inv * tmp$vt
 
 svdW <- La.svd(W,nu=0)
 sqrtW <- sqrt(svdW$d) * svdW$vt 
+
+
+
+support <- function(x) {
+  return(as.numeric( -1 < x[2] && x[2] < 1 &&
+                       -2 < x[1] &&
+                       ( x[1] < 1 || crossprod(x-c(1,0)) < 1 ) ) )
+}
+Min.log <- log(.Machine$double.xmin) + 10
+logf <- function(x) {
+  if ( x[1] < 0 ) return(log(1/4))
+  else
+    if (crossprod(x-c(1,0)) < 1 ) return(log(1/pi))
+  return(Min.log)
+}
+x <- as.matrix(expand.grid(seq(-2.2,2.2,length=40),seq(-1.1,1.1,length=40)))
+y <- sapply(1:nrow(x), function(i) support(x[i,]))
+plot(x,type='n',asp=1)
+points(x[y==1,],pch=1,cex=1,col='green')
+z <- arms(c(0,0), logf, support, 5000)
+points(z,pch=20,cex=0.5,col='blue')
+polygon(c(-2,0,0,-2),c(-1,-1,1,1))
+curve(-sqrt(1-(x-1)^2),0,2,add=TRUE)
+curve(sqrt(1-(x-1)^2),0,2,add=TRUE)
+sum( z[,1] < 0 ) # sampled points in the square
+sum( apply(t(z)-c(1,0),2,crossprod) < 1 ) # sampled points in the circle
+
+
+
+# posterior
+log_mvnorm <- function(x, mu, Sigma, P=NULL){
+  eps <- .Machine$double.eps^.4
+  
+  if (is.null(P)) {
+    tmp <- La.svd(Sigma)
+    D <- sqrt(tmp$d)
+    D <- pmax(D, eps)
+    D.inv <- 1/D
+    sqrtP <- D.inv * tmp$vt 
+    sqrtP[abs(sqrtP) == Inf] <- 0
+    
+  }
+  
+  p <- -0.5*log(det(Sigma)) + crossprod(sqrtP %*% (x-mu))
+  return(p)
+}
+
+log_gamma <- function(x, shape, rate){
+  
+  p <- (shape-1)*log(x)-x*rate
+  
+  return(p)
+}
+
+
+log_mvnorm(theta, mu, Sigma, P)
+
+posterior(x, prior_shape, prior_rate){
+    psiy <- x[1, 1]
+    psiy <- x[2, 1]
+    psiy <- x[3, 1]
+    psiy <- x[4, 1]
+    
+    post <- log_gamma(psiy, prior_shape[1], prior_rate[1])+
+      log_gamma(psi1, prior_shape[2], prior_rate[2])+
+      log_gamma(psi2, prior_shape[3], prior_rate[3])+
+      log_gamma(psi3, prior_shape[4], prior_rate[4])
+  
+    return(post)
+}
+
+
+ffbs <- function(y, mc) {
+  n <- length(y)
+  ay <- 1e-2
+  by <- 1e-3
+  a_psi1 <-2.5e-1
+  b_psi1 <- 5e-3
+  a_psi2 <- 2.5e7
+  b_psi2 <- 500
+  a_psi3 <- 2.5e7
+  b_psi3 <- 50
+  
+  set.seed(123)
+  psiy <- 1
+  psi1 <- 50
+  psi2 <- 5e5
+  psi3 <- 5e5
+  V <- 1 / psiy
+  W <- diag(rep(0, 5))
+  diag(W)[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
+  mod_level <- dlmModPoly(order = 2) + dlmModSeas(frequency = 4)
+  V(mod_level) <- V
+  W(mod_level) <- W
+  
+  
+  psiy_save <- numeric(mc)
+  psi1_save <- numeric(mc)
+  psi2_save <- numeric(mc)
+  psi3_save <- numeric(mc)
+  theta_save <- array(0, dim = c(n + 1, nrow(W), mc))
+  
+  shy <- ay + n / 2
+  sh1 <- a_psi1 + n / 2
+  sh2 <- a_psi2 + n / 2
+  sh3 <- a_psi3 + n / 2
+  
+  set.seed(10)
+  
+  for (it in 1:mc) {
+    FF <- FF(mod_level)
+    GG <- GG(mod_level)
+    ## draw the states: FFBS
+    filt <- dlmFilter(y, mod_level)
+    theta <- dlmBSample(filt)
+    
+    ## draw observation precision psiy
+    rate <- by + crossprod(y - theta[-1, ] %*% t(FF)) / 2
+    psiy <- rgamma(1, shape = shy, rate = rate)
+    
+    SS_theta <- diag(crossprod(theta[-1, ] - theta[-n, ] %*% t(GG)))
+    # draw system precision psi2
+    rate <- b_psi1 + SS_theta[1] / 2
+    psi1 <- rgamma(1, shape = sh1, rate = rate)
+    
+    # draw system precision psi2
+    rate <- b_psi2 + SS_theta[2] / 2
+    psi2 <- rgamma(1, shape = sh2, rate = rate)
+    
+    # draw system precision psi2
+    rate <- b_psi3 + SS_theta[3] / 2
+    psi3 <- rgamma(1, shape = sh3, rate = rate)
+    
+    ## update and save
+    V(mod_level) <- 1 / psiy
+    diag(W(mod_level))[1:3] <- c(1 / psi1, 1 / psi2, 1 / psi3)
+    theta_save[, , it] <- theta
+    psiy_save[it] <- psiy
+    psi1_save[it] <- psi1
+    psi2_save[it] <- psi2
+    psi3_save[it] <- psi3
+    
+    if (10*it %% mc == 0){
+      comp_perc = 100*it / mc
+      print (paste("completion: ", comp_perc))
+    }
+    
+    
+  }
+  return(list(psiy_save, psi1_save, psi2_save, psi3_save, theta_save))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
