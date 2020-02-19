@@ -11,7 +11,7 @@ using SparseArrays
 using Distributions
 using Random
 using Plots
-using Infiltrator
+#using Infiltrator
 
 include("../bayesian_inference/bayesian_utils.jl")
 # 1) TVP-VAR
@@ -64,7 +64,7 @@ function gibbs_sampler(y, nsim, prior_shape, prior_rate)
     T = size(Y, 1);
     q = 13;
     Tq = T*q;
-
+    epss = eps()^0.4
     # priors #-----------------------------------------------------------------
 
     # Omega_11
@@ -72,7 +72,7 @@ function gibbs_sampler(y, nsim, prior_shape, prior_rate)
     b_y = prior_rate[1];
 
     # Omega_22
-    DD_inv = sparse(1.0I, q, q);
+    DD_inv = 1e-3sparse(1.0I, q, q);
     a_psi = prior_shape[2:end];
     b_psi = prior_rate[2:end];
 
@@ -116,27 +116,40 @@ function gibbs_sampler(y, nsim, prior_shape, prior_rate)
 
     for isim in 1:nsim
 
-        #S_inv = blockdiag(DD_inv, kron(sparse(I,TT-1,TT-1), Omega22_inv));
-        S_inv = kron(sparse(1.0I, T, T), Omega22_inv);
-        S_inv[1:q, 1:q] = DD_inv;
+        S_inv = blockdiag(DD_inv, kron(sparse(I, T-1, T-1), Omega22_inv));
         K = (HT * S_inv * H);
 
-        GGL = tril(bigGT * kron(sparse(1.0I, T, T), Omega11_inv) * bigG);
-        GT_Omega11_inv_G = GGL + sparse(GGL') - Diagonal(GGL);
-        GT_Omega11_inv_Y = bigGT * (kron(sparse(1.0I, T, T), Omega11_inv) * Y);
+        GtOmega11 = bigGT * kron(sparse(1.0I, T, T), Omega11_inv);
+        GtOmega11G = GtOmega11*bigG;
+        GtOmega11Y = GtOmega11 * Y;
 
-        P = K + GT_Omega11_inv_G;
+        P = K + GtOmega11G;
+        P = (P+P')./2
 
-        C = cholesky(P, perm=1:Tq);
-        L = sparse(C.L);
-        eta_hat = L'\(L\GT_Omega11_inv_Y);
+        tmp = cholesky(P, perm = 1:Tq, check = false);
+        if issuccess(tmp)
+            L = sparse(tmp.L);
+        else
+            tmp = ldlt(P, perm = 1:Tq, check = false);
+            if issuccess(tmp)
+                LD = sparse(tmp.LD);
+                e = diag(LD);
+                e[findall(x -> x <= epss, e)] .= 0;
+                L = LD - Diagonal(LD) + I(Tq);
+                D = sparse(Diagonal(e));
+                L*D*L' ≈    P
+                L = L*sparse(Diagonal(e .^0.5))
+            end
+
+        end
+
+        eta_hat = L'\(L\GtOmega11Y);
         eta = (eta_hat + L' \ rand(Normal(), Tq));
 
         # Omega11
         e1 = Y - bigG * eta;
         new_b_y = b_y + (e1[2:end,:]'*e1[2:end,:])[]/2;
         Omega11_inv = rand(Gamma(new_a_y, 1/new_b_y));
-        #Omega11 = Omega11_inv ^-1;
 
         # Omega22
         e2 = reshape(H * eta, q, T);
@@ -144,7 +157,6 @@ function gibbs_sampler(y, nsim, prior_shape, prior_rate)
         for i in 1:q
             Omega22_inv[i, i] = rand(Gamma(new_a_psi[i], 1/new_b_psi[i]));
         end
-        #Omega22 = Omega22_inv\sparse(1.0I, q, q);
 
         if rem(isim, nsim/10) == 0.0
             comp_perc = isim/nsim*100
