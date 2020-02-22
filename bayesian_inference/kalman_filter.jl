@@ -8,8 +8,6 @@ using CSV
 using SparseArrays
 using Plots
 using Statistics
-#using Distributions
-#using Random
 
 
 add_dim(x::Array) = reshape(x, (size(x)...,1))
