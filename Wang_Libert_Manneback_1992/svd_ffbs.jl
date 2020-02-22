@@ -9,8 +9,6 @@ using Plots
 using Statistics
 using Distributions
 
-
-
 function kalman_filter(Y, G, F, W, V, C0, m0)
     T = size(Y, 1);
     q1 = size(V, 1);
