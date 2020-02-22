@@ -18,6 +18,7 @@ logf <- function(x) {
   }
   return(Min.log)
 }
+
 x <- as.matrix(expand.grid(seq(-2.2, 2.2, length = 40), seq(-1.1, 1.1, length = 40)))
 y <- sapply(1:nrow(x), function(i) support(x[i, ]))
 plot(x, type = "n", asp = 1)
