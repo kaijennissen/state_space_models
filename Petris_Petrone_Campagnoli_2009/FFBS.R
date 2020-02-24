@@ -214,7 +214,6 @@ Sys.time()-now
 burn <- 1:500
 nuRange <- c(1:10, seq(20, 100, by = 10))
 
-
 omega_y <- ts(colMeans(gibbsOut$omega_y[-burn, ]),
               start = start(y),
               freq = 4)
