@@ -5,6 +5,11 @@
 # International Journal of Mathematical Modelling and Numerical
 # Optimisation, 1, 101-120.
 #------------------------------------------------------------------------------
+
+# State Space Equation
+# y_t = X_t * beta_t + G_t * x_t + vega_t  vega_t ~ N(0, V_t)
+# eta_t = Z_t * gamma_t + F_t * eta_t-1 + omega_t  omega_t ~ N(0, W_t)
+
 using LinearAlgebra
 using CSV
 using SparseArrays
@@ -12,6 +17,8 @@ using Distributions
 using Random
 using Plots
 #using Infiltrator
+
+
 
 include("../bayesian_inference/bayesian_utils.jl")
 # 1) TVP-VAR

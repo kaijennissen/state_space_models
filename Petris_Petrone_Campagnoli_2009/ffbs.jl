@@ -13,6 +13,11 @@
 # Improved Discrete-Time Kalman Filtering within Singular Value Decomposition
 # IET Control Theory & Applications, 11 (15):2412
 #------------------------------------------------------------------------------
+
+# State Space Equation
+# y_t = X_t * beta_t + F_t * x_t + vega_t  vega_t ~ N(0, V_t)
+# eta_t = Z_t * gamma_t + G_t * eta_t-1 + omega_t  omega_t ~ N(0, W_t)
+
 using LinearAlgebra
 using CSV
 using Plots
@@ -312,7 +317,7 @@ function gibbs_sampler_2(y, nsim, nburn)
     end
     return store_phi1, store_phi2, store_theta
 end
-# 
+#
 # data_raw = CSV.read("Nile.csv", header = 0);
 # y = map(x->parse(Float64,x), data_raw[2:end, 2]);
 # plot(y)
