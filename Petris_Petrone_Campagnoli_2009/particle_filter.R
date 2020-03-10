@@ -5,7 +5,6 @@
 #--------------------------------------------------------------------------
 library(dlm)
 
-# TODO vectorize for
 log_pdf_mvnorm <- function(x,
                            mu,
                            Sigma = NULL,
@@ -45,7 +44,6 @@ vec_log_pdf_mvnorm <- function(x,
   d <- dim(sqrtP)[1]
   K <- -(d / 2) * log((2 * pi)) - 0.5 * log(det(Sigma))
   
-  # TODO vectorize by broadcasting shoter with kronecker
   if (dim(x)[2] > 1) {
     if (dim(mu)[2] > 1) {
       p <- -0.5 * diag(crossprod(sqrtP %*% (x - mu)))
@@ -89,7 +87,7 @@ particle_filter <- function(y, N, mod) {
   Sigma <- FF %*% W %*% t(FF) + V
   Sigma_inv <- solve(Sigma, diag(dim(Sigma)[1]))
   importanceSD <- W - W %*% t(FF) %*% Sigma_inv %*% FF %*% W
-  #browser()
+  
   eps <- .Machine$double.eps ^ .4
   tmp <- La.svd(importanceSD)
   D <- sqrt(tmp$d)
@@ -104,7 +102,6 @@ particle_filter <- function(y, N, mod) {
     # a) transition density
     # b) optimal importance kernel
     # draw from Normal
-    
     mu_hat <-
       (GG %*% theta_pf[, , t - 1]  + W %*% t(FF) %*%
          Sigma_inv %*% (y[t - 1] - FF %*% GG %*% theta_pf[, , t - 1]))
@@ -147,11 +144,8 @@ particle_filter <- function(y, N, mod) {
       theta_pf[, , t] <- theta_pf[, idx, t]
       wt[] <- 1 / N
     }
-    
   }
-  
   return(theta_pf)
-  
 }
 
 # Simulate ----------------------------------------------------------------
