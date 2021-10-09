@@ -5,6 +5,7 @@ Chan_Jeliazkov_2009/sp_code
 # History files
 .Rhistory
 .Rapp.history
+*.rdata
 
 .DS_Store
 

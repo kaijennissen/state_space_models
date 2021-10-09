@@ -194,7 +194,6 @@ plot.ts(cbind(c(y), theta_hat[-1, 1]),
 # Example 3 ---------------------------------------------------------------
 # Forward Filtering Backward Sampling using the dlm package
 # p. 182
-
 y <- log(UKgas)
 set.seed(4521)
 now <- Sys.time()
