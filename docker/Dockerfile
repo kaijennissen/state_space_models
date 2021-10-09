@@ -1,4 +1,4 @@
-FROM julia:1.4.0-rc1-buster
+FROM julia:1.4.0-rc2
 
 RUN apt-get update && \
     apt-get upgrade -y && \

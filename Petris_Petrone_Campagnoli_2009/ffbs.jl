@@ -67,7 +67,8 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
     store_m[:,1] = m;
     store_D_plus[:,:,1] = D_plus;
     store_U_plus[:,:,1] = U_plus;
-
+	
+    # forward 
     for t in 1:T
 
         # prior
@@ -108,7 +109,8 @@ function svd_forward_backward(Y, G, F, W, V, C0, m0)
     Dw = tmp.S .^0.5;
     Dw = max.(Dw, epss);
     sqrtWinv = Diagonal(1 ./ Dw) * tmp.Vt;
-
+    
+    # backward
     for t in collect(T:-1:1)
 
         a = store_a[:,t];
