@@ -426,43 +426,68 @@ function gibbs_sampler_3(y, nsim, init_psi, prior_shape, prior_rate)
     end
     return store_psi_y, store_psi_1, store_psi_2, store_psi_3, store_theta
 end
-#
-# # Import data
-# data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
-# y = map(x->parse(Float64,x), data_raw[2:end, 2]);
-# y = broadcast(log, y);
-# plot(y)
-#
-# ret_hyper(50, 1e5)
-#
-# prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
-# prior_rate = [1e-4, 5e-4, 0.5, 0.1];
-# psi_init = [17, 63, 0.189, 0.71];
-# nsim = 10000;
-# Random.seed!(10);
-#
-# psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_2(y, nsim, psi_init, prior_shape, prior_rate);
-#
-# # MCMC Diagnostics
-# rho = acf(psi_y, 1000)
-# scatter(collect(1:size(rho, 1)), rho)
-#
-# plot(cumsum(psi_y) ./ collect(1.0:nsim))
-# plot(cumsum(psi_1) ./ collect(1.0:nsim))
-# plot(cumsum(psi_2) ./ collect(1.0:nsim))
-# plot(cumsum(psi_3) ./ collect(1.0:nsim))
-#
-# effective_sample_size(psi_y)
-# effective_sample_size(psi_1)
-# effective_sample_size(psi_2)
-# effective_sample_size(psi_3)
-#
-#
-# # psiy_hat
-# mean(psi_y[5001:end])
-# # psi1_hat
-# mean(psi_1[5001:end])
-# # psi2_hat
-# mean(psi_2[5001:end])
-# # psi3_hat
-# mean(psi_3[5001:end])
+
+# Import data
+#data_raw = CSV.read("./bayesian_inference/AirPassengers.csv", header = 0);
+y=[112., 118, 132, 129, 121, 135, 148, 148, 136, 119, 104, 118, 115, 126, 141, 135, 125, 149, 170, 170, 158, 133, 114, 140, 145, 150, 178, 163, 172, 178,
+ 199, 199, 184, 162, 146, 166, 171, 180, 193, 181, 183, 218, 230, 242, 209, 191, 172, 194, 196, 196, 236, 235, 229, 243, 264, 272, 237, 211, 180, 201,
+ 204, 188, 235, 227, 234, 264, 302, 293, 259, 229, 203, 229, 242, 233, 267, 269, 270, 315, 364, 347, 312, 274, 237, 278, 284, 277, 317, 313, 318, 374,
+ 413, 405, 355, 306, 271, 306, 315, 301, 356, 348, 355, 422, 465, 467, 404, 347, 305, 336, 340, 318, 362, 348, 363, 435, 491, 505, 404, 359, 310, 337,
+ 360, 342, 406, 396, 420, 472, 548, 559, 463, 407, 362, 405, 417, 391, 419, 461, 472, 535, 622, 606, 508, 461, 390, 432]
+#y = map(x->parse(Float64,x), data_raw[2:end, 2]);
+y = broadcast(log, y);
+plot(y)
+
+ret_hyper(50, 1e5)
+
+prior_shape = [1e-3, 2.5e-2, 2.5e5, 1e4];
+prior_rate = [1e-4, 5e-4, 0.5, 0.1];
+psi_init = [17, 63, 0.189, 0.71];
+nsim = 100_000;
+Random.seed!(10);
+
+@time psi_y, psi_1, psi_2, psi_3, theta = gibbs_sampler_3(y, nsim, psi_init, prior_shape, prior_rate);
+
+# MCMC Diagnostics
+rho = acf(psi_y, 1000);
+scatter(collect(1:size(rho, 1)), rho)
+
+plot(cumsum(psi_y) ./ collect(1.0:nsim))
+plot(cumsum(psi_1) ./ collect(1.0:nsim))
+plot(cumsum(psi_2) ./ collect(1.0:nsim))
+plot(cumsum(psi_3) ./ collect(1.0:nsim))
+
+effective_sample_size(psi_y)
+effective_sample_size(psi_1)
+effective_sample_size(psi_2)
+effective_sample_size(psi_3)
+
+G, F, W, V = local_trend_seasonal12()
+
+y_hat=mean(theta,dims=3)[:,:,1]*F';
+l=y_hat-2*std(theta,dims=3)[:,:,1]*F';
+u=y_hat+2*std(theta,dims=3)[:,:,1]*F';
+
+
+x= [1:1:144;]
+plot(x,y,label="Observed")
+plot!(x,y_hat[2:end,1],label="Filtered", legend=:bottomright)
+plot!(x, l[2:end],fillrange=u[2:end], alpha=.2, label="+-2 std")
+savefig("FFBS_AirPassengers.png")
+
+seas_mean=mean(theta,dims=3)[2:end,3,1];
+seas_std=std(theta,dims=3)[2:end,3,1];
+l=seas_mean-2*seas_std;
+u=seas_mean+2*seas_std;
+plot(x, seas_mean, label = "Seasonality")
+plot!(x, l, fillrange = u, alpha = 0.2, label = "+-2*std")
+savefig("FFBS_AirPassengers_seasonality.png")
+
+# psiy_hat
+mean(psi_y[5001:end])
+# psi1_hat
+mean(psi_1[5001:end])
+# psi2_hat
+mean(psi_2[5001:end])
+# psi3_hat
+mean(psi_3[5001:end])
